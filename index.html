@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#14213D">
+  <meta name="description" content="작근단 수송대대 병을 위한 개인 휴가 달력. 남은 휴가와 출타 계획을 이 기기에만 저장합니다.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="출타 장부">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <title>출타 장부 — 공군 휴가 달력</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./assets/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./src/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">본문으로 건너뛰기</a>
+  <div id="update-banner" class="update-banner" hidden></div>
+  <div class="topbar-band">
+    <header class="topbar">
+      <span class="brand"><img src="./assets/icon-192.png" alt="" width="24" height="24">출타 장부</span>
+      <span class="topbar__right">
+        <span class="topbar__unit">작근단 수송대대</span>
+        <button type="button" class="help-btn" id="help-btn" data-testid="help">사용법</button>
+      </span>
+    </header>
+  </div>
+  <main id="main" class="view" tabindex="-1">
+    <noscript><p class="notice">이 앱은 JavaScript가 필요합니다.</p></noscript>
+    <p class="muted boot">기록을 불러오는 중…</p>
+  </main>
+  <nav class="tabs" id="tabs" aria-label="화면 전환">
+    <button type="button" class="tab" data-view="calendar">달력</button>
+    <button type="button" class="tab" data-view="grants">내 휴가</button>
+    <button type="button" class="tab" data-view="settings">설정</button>
+  </nav>
+  <div class="toasts" aria-live="polite" id="toast"></div>
+  <div class="toasts toasts--alert" role="alert" id="alert"></div>
+  <dialog id="sheet" class="sheet" aria-modal="true"></dialog>
+</body>
+</html>
