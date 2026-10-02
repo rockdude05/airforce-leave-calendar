@@ -2,7 +2,7 @@
 // 앱 파일을 바꾸면 `npm run stamp`로 CONTENT_HASH를 갱신한다 (npm test가 불일치를 잡는다).
 // 해시가 바뀌면 sw.js 바이트가 달라져 설치된 기기가 새 버전을 감지한다. 캐시 이름에도 들어가 옛 캐시를 정리한다.
 const VERSION = '1.1.1';
-const CONTENT_HASH = '0905088701f79e7b';
+const CONTENT_HASH = '5f9feb8823317b4e';
 const PREFIX = 'airforce-leave-calendar-';
 const CACHE = `${PREFIX}${VERSION}-${CONTENT_HASH}`;
 const PRECACHE = [
