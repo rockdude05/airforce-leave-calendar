@@ -1,6 +1,6 @@
 import { compareDates, isDateOnly, addDays } from './dates.js';
 import {
-  GRANT_KINDS, SEGMENT_KINDS, TRIP_STATUSES, TRANSPORT_ASSESSMENTS, SEGMENT_KIND_LABELS, VISIT_PRINCIPLE_LIMIT,
+  GRANT_KINDS, SEGMENT_KINDS, TRIP_STATUSES, TRANSPORT_ASSESSMENTS, SEGMENT_KIND_LABELS, VISIT_PRINCIPLE_LIMIT, OUTING_MONTHLY_LIMIT,
 } from './model.js';
 import { validateService } from './service.js';
 import { allocationByGrant, grantWindow, inGrantWindow, isActiveTrip, visitCounts } from './balances.js';
@@ -123,26 +123,52 @@ export function tripsOverlap(a, b) {
   return a.segments.some((x) => b.segments.some((y) => datesOverlap(x, y)));
 }
 
-/** 후급·결합 등 확인 필요 안내 (자동 판정 아님) */
+/**
+ * 후급 판정 (부대 기준, 2026-10-02 사용자 확인):
+ *  - 성과제외박만 쓴 출타 → 후급 없음
+ *  - 정기휴가(연가)가 하루라도 들어간 출타 → 후급 없음
+ *  - 그 밖(포상·위로·보상·청원 등, 성과제외박과 함께 써도) → 확인 필요 (앱이 확정하지 않음)
+ * @returns {'none-performance-only'|'none-regular'|'unconfirmed'|null} 휴가·성과제가 없으면 null
+ */
+export function transportRule(state, t) {
+  const kinds = new Set(t.segments.map((s) => s.kind));
+  if (!kinds.has('leave') && !kinds.has('performance')) return null;
+  if (!kinds.has('leave')) return 'none-performance-only';
+  const hasRegular = t.segments.some((s) => s.kind === 'leave'
+    && String(state.grants.find((g) => g.id === s.grantId)?.kind ?? '').startsWith('regular'));
+  return hasRegular ? 'none-regular' : 'unconfirmed';
+}
+
+export const TRANSPORT_RULE_TEXT = {
+  'none-performance-only': '후급 대상 아님 — 성과제외박만 쓰는 출타는 후급이 나오지 않습니다 (부대 기준).',
+  'none-regular': '후급 대상 아님 — 정기휴가(연가)가 하루라도 들어가면 후급이 나오지 않습니다 (부대 기준).',
+  unconfirmed: '후급 가능 여부: 정기휴가 없이 쓰는 출타라 후급이 나올 수 있습니다. 부대에 확인한 뒤 직접 기록해 주세요.',
+};
+
+/** 후급·결합 등 안내 */
 function tripInfos(state, t) {
   const out = [];
   const kinds = new Set(t.segments.map((s) => s.kind));
-  if (kinds.has('visit')) {
-    out.push(issue('info', 'VISIT_CYCLE_UNCONFIRMED', '면회외출 3개월 주기의 기준일은 부대 확인이 필요합니다. 앱은 다음 가능일을 계산하지 않습니다.'));
-  }
   if (kinds.has('leave') && kinds.has('performance')) {
     out.push(issue('info', 'COMBINATION_UNCONFIRMED', '휴가와 성과제외박을 이어 쓰는 조건은 부대 확인이 필요합니다.'));
   }
-  const grantKinds = new Set(
-    t.segments.filter((s) => s.kind === 'leave').map((s) => state.grants.find((g) => g.id === s.grantId)?.kind).filter(Boolean),
-  );
-  if (grantKinds.size > 1) {
-    out.push(issue('info', 'MIXED_LEAVE_UNCONFIRMED', '여러 종류 휴가를 이어 쓸 때의 후급 조건은 부대 확인이 필요합니다.'));
-  }
-  if ((kinds.has('leave') || kinds.has('performance')) && t.transport?.assessment === 'unknown') {
-    out.push(issue('info', 'TRANSPORT_UNCONFIRMED', '후급 가능 여부: 확인 필요. 부대에 확인한 뒤 직접 기록해 주세요.'));
+  const rule = transportRule(state, t);
+  if (rule === 'none-performance-only' || rule === 'none-regular') {
+    out.push(issue('info', rule === 'none-regular' ? 'TRANSPORT_NONE_REGULAR' : 'TRANSPORT_NONE_PERFORMANCE', TRANSPORT_RULE_TEXT[rule]));
+  } else if (rule === 'unconfirmed' && t.transport?.assessment === 'unknown') {
+    out.push(issue('info', 'TRANSPORT_UNCONFIRMED', TRANSPORT_RULE_TEXT.unconfirmed));
   }
   return out;
+}
+
+/** 같은 달(YYYY-MM) 활성 외출 수 */
+export function outingsInMonth(trips, month) {
+  let n = 0;
+  for (const t of trips) {
+    if (!isActiveTrip(t)) continue;
+    for (const s of t.segments) if (s.kind === 'outing' && s.start.startsWith(month)) n += 1;
+  }
+  return n;
 }
 
 /** 전체 상태에서 특정 지급 건들의 배정 불변식 */
@@ -202,7 +228,17 @@ export function validateTrip(state, candidate, replaceId = null) {
       }
       const v = visitCounts(next);
       if (v.total > VISIT_PRINCIPLE_LIMIT) {
-        out.push(issue('warning', 'VISIT_OVER_PRINCIPLE', `면회외출이 복무 중 ${VISIT_PRINCIPLE_LIMIT}회 원칙을 넘습니다 (합계 ${v.total}회). 확인 후 저장할 수 있습니다.`));
+        out.push(issue('warning', 'VISIT_OVER_PRINCIPLE', `면회외출이 복무 중 ${VISIT_PRINCIPLE_LIMIT}회 한도를 넘습니다 (합계 ${v.total}회). 확인 후 저장할 수 있습니다.`));
+      }
+    }
+  }
+  if (isActiveTrip(candidate)) {
+    const others2 = state.trips.filter((t) => t.id !== replaceId);
+    const months = new Set(candidate.segments.filter((s) => s.kind === 'outing').map((s) => s.start.slice(0, 7)));
+    for (const m of months) {
+      const n = outingsInMonth([...others2, candidate], m);
+      if (n > OUTING_MONTHLY_LIMIT) {
+        out.push(issue('warning', 'OUTING_OVER_MONTHLY', `외출은 한 달에 ${OUTING_MONTHLY_LIMIT}회까지이고 남은 횟수는 다음 달로 넘어가지 않습니다 (${Number(m.slice(5))}월 ${n}회). 확인 후 저장할 수 있습니다.`));
       }
     }
   }
@@ -250,7 +286,7 @@ export function validateSettings(state, settings) {
     out.push(err('VISIT_BASELINE_COUNT', `시작 전 면회외출 횟수는 0~${VISIT_BASELINE_MAX} 사이 정수여야 합니다.`, 'visitBaselineCount'));
   } else if (settings.visitBaselineCount > VISIT_PRINCIPLE_LIMIT) {
     // 7회는 원칙일 뿐이라 예외로 더 다녀온 사람도 기록할 수 있어야 한다 (일정의 7회 초과 허용과 일치)
-    out.push(issue('warning', 'VISIT_OVER_PRINCIPLE', `시작 전 횟수가 복무 중 ${VISIT_PRINCIPLE_LIMIT}회 원칙을 넘습니다. 실제 다녀온 횟수가 맞으면 그대로 저장하세요.`, 'visitBaselineCount'));
+    out.push(issue('warning', 'VISIT_OVER_PRINCIPLE', `시작 전 횟수가 복무 중 총 ${VISIT_PRINCIPLE_LIMIT}회 한도를 넘습니다. 실제 다녀온 횟수가 맞으면 그대로 저장하세요.`, 'visitBaselineCount'));
   }
   if (!isDateOnly(settings.visitBaselineAsOf)) {
     out.push(err('VISIT_BASELINE_DATE', '기준일을 선택해 주세요.', 'visitBaselineAsOf'));
@@ -342,7 +378,12 @@ export function validateState(input, { version = 2 } = {}) {
   out.push(...grantAllocationIssues(s, [...grantIds]));
   const v = visitCounts(s);
   if (v.total > VISIT_PRINCIPLE_LIMIT) {
-    out.push(issue('warning', 'VISIT_OVER_PRINCIPLE', `면회외출이 복무 중 ${VISIT_PRINCIPLE_LIMIT}회 원칙을 넘습니다 (합계 ${v.total}회).`));
+    out.push(issue('warning', 'VISIT_OVER_PRINCIPLE', `면회외출이 복무 중 총 ${VISIT_PRINCIPLE_LIMIT}회 한도를 넘습니다 (합계 ${v.total}회).`));
+  }
+  const outingMonths = new Set(active.flatMap((t) => t.segments.filter((x) => x.kind === 'outing').map((x) => x.start.slice(0, 7))));
+  for (const m of outingMonths) {
+    const n = outingsInMonth(s.trips, m);
+    if (n > OUTING_MONTHLY_LIMIT) out.push(issue('warning', 'OUTING_OVER_MONTHLY', `${m.slice(0, 4)}년 ${Number(m.slice(5))}월 외출이 ${n}회로 한 달 ${OUTING_MONTHLY_LIMIT}회를 넘습니다.`));
   }
   return dedupe(out);
 }

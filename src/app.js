@@ -10,7 +10,6 @@ import { renderGrants, renderGrantForm, renderVisitForm } from './ui/grants.js';
 import { renderTripEditor } from './ui/trip-editor.js';
 import { renderSettings, renderRestoreConfirm } from './ui/settings.js';
 import { renderGuide } from './ui/guide.js';
-import { diagOn, diagReport } from './diag.js';
 import { renderServiceForm } from './ui/service.js';
 import { computeSchedule, validateService } from './domain/service.js';
 import { addDays } from './domain/dates.js';
@@ -111,24 +110,53 @@ window.addEventListener('storage', (e) => {
 
 /* ---------------- 시트 ---------------- */
 
+// iOS Safari에서 dialog가 열린 직후 내용을 그리면(+자동 입력 포커스·dialog 애니메이션·dialog 자체 스크롤)
+// 흰 화면만 보이는 문제가 있었다(2026-10-02). 내용을 먼저 그린 뒤 열고, 입력 칸에 자동 포커스하지 않는다.
+/** 열림 여부 — 대체 시트에서도 동작하도록 open 속성으로 판단 */
+const isOpen = (d) => d.hasAttribute('open');
+const HAS_DIALOG = typeof HTMLDialogElement === 'function' && typeof HTMLDialogElement.prototype.showModal === 'function';
+
+/** dialog 열기 — iOS 15.4 미만처럼 showModal이 없으면 고정 위치 시트로 대신 연다 */
+function showDialog(d) {
+  if (HAS_DIALOG) { if (!isOpen(d)) d.showModal(); return; }
+  d.setAttribute('open', ''); d.classList.add('sheet--fallback'); document.body.classList.add('has-fallback-sheet');
+  d.querySelector('button, [href], input, select, textarea')?.focus?.();
+}
+function hideDialog(d) {
+  if (HAS_DIALOG) { if (isOpen(d)) d.close(); return; }
+  d.removeAttribute('open'); d.classList.remove('sheet--fallback');
+  if (!document.querySelector('.sheet--fallback')) document.body.classList.remove('has-fallback-sheet');
+}
+
+/** 키보드가 올라오면 시트 높이를 실제 보이는 화면(visualViewport)에 맞춘다 */
+function fitSheetToViewport() {
+  const vv = window.visualViewport;
+  if (vv) document.documentElement.style.setProperty('--vvh', `${Math.round(vv.height)}px`);
+}
+window.visualViewport?.addEventListener('resize', fitSheetToViewport);
+fitSheetToViewport();
+
 function openSheet(renderFn) {
   sheet.replaceChildren();
-  if (diagOn('F')) {
-    sheetHandle = renderFn(sheet) ?? null;
-    if (!sheet.open) sheet.showModal();
-  } else {
-    if (!sheet.open) sheet.showModal();
-    sheetHandle = renderFn(sheet) ?? null;
-  }
-  diagReport(sheet);
+  sheetHandle = renderFn(sheet) ?? null;
+  showDialog(sheet);
+  sheet.querySelector('.sheet__body')?.scrollTo?.(0, 0);
 }
 
 function closeSheet({ force = false } = {}) {
   if (!force && sheetHandle?.isDirty() && !window.confirm('저장하지 않은 내용을 버리고 닫을까요?')) return;
   sheetHandle = null;
-  if (sheet.open) sheet.close();
+  hideDialog(sheet);
   sheet.replaceChildren();
 }
+
+// 대체 시트(dialog 미지원)에서도 Esc로 닫기
+document.addEventListener('keydown', (e) => {
+  if (HAS_DIALOG || e.key !== 'Escape') return;
+  const top = [...document.querySelectorAll('.sheet--fallback')].pop();
+  if (top === sheet) closeSheet();
+  else if (top) top.dispatchEvent(new Event('cancel', { cancelable: true }));
+});
 
 sheet.addEventListener('cancel', (e) => { e.preventDefault(); closeSheet(); });
 
@@ -162,7 +190,7 @@ async function askRule(rule, type) {
  * 편집 내용을 지우지 않고, 닫으면 원래 시트로 돌아간다.
  */
 function openManualFeedback(rule, type) {
-  if (!sheet.open) {
+  if (!isOpen(sheet)) {
     openSheet((root) => { renderManualFeedback(root, { rule, type, onClose: () => closeSheet({ force: true }) }); return null; });
     return;
   }
@@ -172,14 +200,14 @@ function openManualFeedback(rule, type) {
   over.setAttribute('aria-modal', 'true');
   over.dataset.testid = 'feedback-over';
   const close = () => {
-    if (over.open) over.close();
+    hideDialog(over);
     over.remove();
     /** @type {HTMLElement|null} */ (back)?.focus?.();
   };
   over.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
   document.body.append(over);
-  over.showModal();
   renderManualFeedback(over, { rule, type, onClose: close });
+  showDialog(over);
 }
 
 function openTrip(id) {
@@ -382,7 +410,7 @@ window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); inst
 
 function applyUpdate() {
   if (!waitingWorker) return;
-  if (sheet.open && sheetHandle?.isDirty()) {
+  if (isOpen(sheet) && sheetHandle?.isDirty()) {
     toast('작성 중인 내용을 저장하거나 닫은 뒤 새 버전을 적용해 주세요.', { error: true });
     return;
   }
@@ -441,7 +469,7 @@ function setView(next) {
 }
 
 function openGuide() {
-  if (sheet.open) return;
+  if (isOpen(sheet)) return;
   openSheet((root) => renderGuide(root, { onClose: () => closeSheet({ force: true }) }));
 }
 document.getElementById('help-btn')?.addEventListener('click', openGuide);

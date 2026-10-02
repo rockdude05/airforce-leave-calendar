@@ -1,9 +1,11 @@
 import { isDateOnly } from './dates.js';
 
 export const SCHEMA_VERSION = 2;
-export const RULE_VERSION = 'unit-user-2026-10-02';
+export const RULE_VERSION = 'unit-user-2026-10-02.2';
 export const STORAGE_KEY = 'airforce-leave-calendar:v1';
 export const VISIT_PRINCIPLE_LIMIT = 7;
+/** 일반 외출: 한 달 2회, 남은 횟수는 다음 달로 넘어가지 않음 (2026-10-02 사용자 확인) */
+export const OUTING_MONTHLY_LIMIT = 2;
 
 /** @type {readonly string[]} */
 export const GRANT_KINDS = Object.freeze([

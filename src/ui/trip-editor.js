@@ -1,8 +1,7 @@
 import { h, fill, formatDate, issueList, shortDate } from './dom.js';
-import { diagOn } from '../diag.js';
 import { addDays, inclusiveDays, isDateOnly, compareDates } from '../domain/dates.js';
 import { SEGMENT_KIND_LABELS, TRIP_STATUS_LABELS, emptyTransport, newId } from '../domain/model.js';
-import { validateTrip, LIMITS } from '../domain/validation.js';
+import { validateTrip, LIMITS, transportRule, TRANSPORT_RULE_TEXT } from '../domain/validation.js';
 import { calculateBalances, inGrantWindow } from '../domain/balances.js';
 import { ISSUE_TOPIC } from '../feedback.js';
 
@@ -133,7 +132,7 @@ export function renderTripEditor(root, opts) {
       h('span', null, label));
     fill(transportBox, h('fieldset', { class: 'transport' },
       h('legend', null, '후급(교통비) 기록'),
-      h('p', { class: 'muted small' }, '앱은 후급 가능 여부를 판정하지 않습니다. 부대에 확인한 결과만 직접 기록합니다.'),
+      h('p', { class: `small transport-rule transport-rule--${transportRule(state, draft) ?? 'none'}`, 'data-testid': 'transport-rule' }, TRANSPORT_RULE_TEXT[transportRule(state, draft)] ?? ''),
       transportReset ? h('p', { class: 'issue issue--warning', 'data-testid': 'transport-reset' }, '일정 날짜나 휴가 구성이 바뀌어 후급 확인을 "확인 필요"로 되돌렸습니다. 발급 기록과 메모는 그대로 두었습니다. 바뀐 일정으로 다시 확인해 주세요.') : null,
       h('div', { class: 'choices' },
         radio('unknown', '확인 필요'), radio('confirmed-eligible', '직접 확인: 해당'), radio('confirmed-ineligible', '직접 확인: 해당 없음')),
@@ -193,6 +192,13 @@ export function renderTripEditor(root, opts) {
   function renderTransportIfNeeded() {
     const visible = draft.segments.some((s) => s.kind === 'leave' || s.kind === 'performance');
     if (visible !== lastTransportVisible) { lastTransportVisible = visible; renderTransport(); }
+    // 후급 판정 문구는 휴가 종류·구간이 바뀔 때마다 갱신한다
+    const ruleEl = transportBox.querySelector('[data-testid="transport-rule"]');
+    if (ruleEl) {
+      const rule = transportRule(state, draft);
+      ruleEl.textContent = TRANSPORT_RULE_TEXT[rule] ?? '';
+      ruleEl.className = `small transport-rule transport-rule--${rule ?? 'none'}`;
+    }
   }
 
   function save(statusOverride) {
@@ -248,9 +254,6 @@ export function renderTripEditor(root, opts) {
     form);
   renderSegments();
   update();
-  const title = form.querySelector('#trip-title');
-  if (diagOn('E')) root.addEventListener('animationend', () => title?.focus(), { once: true });
-  else if (!diagOn('D')) title?.focus();
 
   return { isDirty: () => JSON.stringify(draft) !== pristine };
 }

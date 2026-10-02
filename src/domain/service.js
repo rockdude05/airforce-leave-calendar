@@ -1,4 +1,4 @@
-// 복무 일정 계산 (규칙 버전 unit-user-2026-10-02). 순수 함수만 — dates.js 외 의존 없음.
+// 복무 일정 계산 (규칙 버전 unit-user-2026-10-02.2: 성과제 회차 = 수료일 + n·주기). 순수 함수만 — dates.js 외 의존 없음.
 import { addDays, addMonthsClamped, compareDates, inclusiveDays, isDateOnly, weekday } from './dates.js';
 
 /** @typedef {{code:string,message:string,severity:'error'|'warning'|'info',field?:string}} Issue */
@@ -63,7 +63,8 @@ function effectiveValues(overrides, computed) {
 
 /** 성과제 회차·마지막 덜 찬 회차 계산 */
 function computePerformances(graduationEffective, dischargeEffective, cycleWeeks, lastPerformanceDays) {
-  const base = addDays(graduationEffective, 1);
+  // 회차 = 수료일 + n·주기 (2026-10-02 사용자 확인: 수료일 다음 날 기준은 하루씩 늦었음)
+  const base = graduationEffective;
   const cycleLength = 7 * cycleWeeks;
   const days = PERFORMANCE_DAYS[cycleWeeks];
   const performances = [];
@@ -76,7 +77,7 @@ function computePerformances(graduationEffective, dischargeEffective, cycleWeeks
     lastCompleteDate = date;
   }
 
-  const partialStart = lastCompleteDate !== null ? addDays(lastCompleteDate, 1) : base;
+  const partialStart = addDays(lastCompleteDate ?? base, 1);
   let lastPartial = null;
   if (compareDates(partialStart, dischargeEffective) <= 0) {
     const span = inclusiveDays(partialStart, dischargeEffective);

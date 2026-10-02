@@ -1,7 +1,7 @@
 import { h, fill, formatDate, issueList } from './dom.js';
 import { compareDates } from '../domain/dates.js';
-import { GRANT_KINDS, GRANT_KIND_LABELS, REGULAR_GUIDE, VISIT_PRINCIPLE_LIMIT, newId } from '../domain/model.js';
-import { LIMITS, VISIT_BASELINE_MAX } from '../domain/validation.js';
+import { GRANT_KINDS, GRANT_KIND_LABELS, REGULAR_GUIDE, VISIT_PRINCIPLE_LIMIT, OUTING_MONTHLY_LIMIT, newId } from '../domain/model.js';
+import { LIMITS, VISIT_BASELINE_MAX, outingsInMonth } from '../domain/validation.js';
 import { tripCard } from './calendar.js';
 import { serviceCard, missingPromotionGrants, promoButtons } from './service.js';
 
@@ -70,8 +70,9 @@ export function renderGrants(root, { state, balances, today, schedule = null, on
           return h('span', { class: `visit-dot${used ? ' is-used' : ''}${planned ? ' is-planned' : ''}${i >= VISIT_PRINCIPLE_LIMIT ? ' is-over' : ''}` });
         })),
       h('p', { class: 'small' },
-        `앱 시작 전 ${v.baseline}회 (${formatDate(state.settings.visitBaselineAsOf, { weekday: false, year: true })} 기준) + 사용완료 ${v.used}회 + 계획 ${v.planned}회 = ${v.total}회 / 원칙 ${VISIT_PRINCIPLE_LIMIT}회`),
-      h('p', { class: 'muted small' }, '3개월에 1회가 원칙이지만 3개월을 세는 기준일은 부대 확인이 필요해 앱이 다음 가능일을 계산하지 않습니다. 방문자 정보는 기록하지 않습니다.')),
+        `앱 시작 전 ${v.baseline}회 (${formatDate(state.settings.visitBaselineAsOf, { weekday: false, year: true })} 기준) + 사용완료 ${v.used}회 + 계획 ${v.planned}회 = ${v.total}회 / 복무 중 총 ${VISIT_PRINCIPLE_LIMIT}회`),
+      h('p', { class: 'small', 'data-testid': 'outing-month' }, `이번 달 외출 ${outingsInMonth(state.trips, today.slice(0, 7))}회 / 한 달 ${OUTING_MONTHLY_LIMIT}회 (남은 횟수는 다음 달로 넘어가지 않음)`),
+      h('p', { class: 'muted small' }, '면회외출은 복무 중 총 7회입니다(3개월 주기 없음). 방문자 정보는 기록하지 않습니다.')),
     cancelled.length ? h('section', { 'aria-labelledby': 'cancelled-title' },
       h('h2', { id: 'cancelled-title', class: 'section-title' }, '취소한 일정'),
       h('ul', { class: 'trip-list' }, cancelled.map((t) => tripCard(t, grantById, onOpenTrip)))) : null);
@@ -161,7 +162,6 @@ export function renderGrantForm(root, { grant, today, usage, initialKind, onSave
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': '닫기', onClick: onClose }, '✕')),
     form);
   refresh();
-  form.querySelector('#g-kind').focus();
   return { isDirty: () => JSON.stringify(draft) !== pristine };
 }
 
@@ -188,7 +188,6 @@ export function renderVisitForm(root, { settings, onSave, onClose }) {
     h('header', { class: 'sheet__head' }, h('h2', null, '면회외출 시작 횟수'),
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': '닫기', onClick: onClose }, '✕')),
     form);
-  form.querySelector('#v-count').focus();
   return { isDirty: () => JSON.stringify(draft) !== pristine };
 }
 

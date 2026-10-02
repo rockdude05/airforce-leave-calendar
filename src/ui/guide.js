@@ -56,7 +56,7 @@ const SECTIONS = [
   {
     title: '7. 후급(교통비) 기록',
     items: [
-      '앱은 후급 대상인지 판단하지 않습니다. 부대에 확인한 결과를 일정 안 "후급 기록"에 직접 적고, 받았는지와 사용 기간도 적어 둘 수 있습니다.',
+      '성과제외박만 쓰거나 정기휴가(연가)가 하루라도 들어간 출타는 후급이 나오지 않습니다. 앱이 일정 안 "후급 기록"에 바로 알려 줍니다. 그 밖(포상·위로 등)은 부대에 확인한 결과를 직접 적고, 받았는지와 사용 기간도 적어 둘 수 있습니다.',
     ],
   },
   {
@@ -87,8 +87,7 @@ export function renderGuide(root, { onClose }) {
       SECTIONS.map((s) => h('section', { class: 'guide__section' },
         h('h3', { class: 'sub-title' }, s.title),
         h('ul', { class: 'rules' }, s.items.map((t) => h('li', null, t))))),
-      h('p', { class: 'muted small' }, '면회외출 3개월 기준일, 후급 대상, 성과제외박 사용 기한·결합 같은 부대 세칙은 앱이 판정하지 않습니다. 설정 → 적용 규칙에서 목록을 볼 수 있습니다.'),
+      h('p', { class: 'muted small' }, '면회외출은 복무 중 총 7회, 외출은 한 달 2회(넘어가지 않음)로 셉니다. 성과제외박만 쓰거나 정기휴가가 들어간 출타는 후급이 없습니다. 그 밖의 후급 여부와 성과제외박 사용 기한·결합은 앱이 판정하지 않습니다. 설정 → 적용 규칙에서 목록을 볼 수 있습니다.'),
       h('div', { class: 'sheet__actions' }, h('button', { type: 'button', class: 'btn btn--primary', onClick: onClose }, '닫기'))));
-  root.querySelector('.icon-btn')?.focus();
   return null;
 }

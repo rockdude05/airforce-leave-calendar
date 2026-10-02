@@ -27,25 +27,26 @@ export const RULE_TOPICS = {
     '휴가 일수는 시작일과 끝나는 날을 모두 셉니다. 주말도 포함합니다.',
     '정기휴가 기준: 일병 10일, 상병 8일, 병장 10일. 안내값이며 자동으로 지급하지 않습니다.',
     '휴가끼리는 이어서 쓸 수 있습니다. 한 일정 안에서 휴가 종류별로 구간을 나눕니다.',
-    '면회외출은 3개월에 1번, 복무 중 7번이 원칙입니다. 7번을 넘기면 경고합니다. 방문자는 묻지 않습니다.',
+    '면회외출은 복무 중 총 7번입니다(3개월 주기 없음). 7번을 넘기면 경고합니다. 방문자는 묻지 않습니다.',
+    '외출은 한 달에 2번이고, 쓰지 않은 횟수는 다음 달로 넘어가지 않습니다. 같은 달 3번째부터 경고합니다.',
+    '후급: 성과제외박만 쓴 출타와 정기휴가(연가)가 하루라도 들어간 출타는 후급이 나오지 않습니다.',
     '만료일이 있는 휴가는 만료일 당일까지 배정할 수 있습니다.',
     '수료일: 입대한 주를 1주째로 세어 5주째 금요일. 진급: 1일 입대면 입대월, 아니면 다음 달 1일부터 2·8·14개월 뒤 1일. 전역일: 21개월 뒤 같은 날의 전날.',
     '성과제외박: 사용자가 고른 주기로 생기는 날을 계산, 사용 기한·분할은 판정하지 않음. 전역 전에 다 차지 않는 마지막 회차 일수는 직접 입력합니다.',
     '부대에서 받은 날짜가 계산과 다르면 내 복무 정보에서 그 날짜만 직접 고칠 수 있습니다. 고쳐도 이미 저장한 일정은 바뀌지 않습니다.',
   ],
   unconfirmed: [
-    '면회외출 3개월을 세는 기준일 (다음 가능일을 계산하지 않음)',
-    '후급 대상 여부 — 특히 정기휴가가 섞인 휴가, 성과제외박과 이어 쓰는 경우',
-    '진급 누락, 외출 월 횟수·시간, 이월·소멸, 연속 출타 상한',
+    '후급 대상 여부 — 정기휴가 없이 쓰는 출타(포상·위로·보상·청원 등)',
+    '진급 누락, 외출 시간, 정기휴가 이월·소멸, 연속 출타 상한',
     '외출과 휴가를 바로 이어 쓰는 조건',
   ],
 };
 
 /** 검증 안내 코드 -> 문의할 규칙 항목 이름. 매핑이 없는 코드는 "문의하기"를 붙이지 않는다. */
 export const ISSUE_TOPIC = {
-  VISIT_CYCLE_UNCONFIRMED: '면회외출 3개월 기준일',
   TRANSPORT_UNCONFIRMED: '후급 대상 여부',
-  MIXED_LEAVE_UNCONFIRMED: '후급 대상 여부',
+  TRANSPORT_NONE_REGULAR: '후급 기준 (정기휴가 포함·성과제 단독)',
+  TRANSPORT_NONE_PERFORMANCE: '후급 기준 (정기휴가 포함·성과제 단독)',
   COMBINATION_UNCONFIRMED: '휴가와 성과제외박 연결',
 };
 
@@ -118,7 +119,8 @@ export async function sendFeedback({ rule, type }, { online = navigator.onLine }
 export function renderManualFeedback(root, { rule, type, onClose }) {
   const text = buildShareText({ rule, type }, { appVersion: APP_VERSION, ruleVersion: RULE_VERSION });
   const textarea = h('textarea', {
-    readonly: true, rows: 7, class: 'feedback-manual-text', 'data-testid': 'feedback-manual-text',
+    // 읽기 전용이라 키보드가 뜨지 않으므로 autofocus 허용 — 시트를 연 뒤(showModal) 이 칸에 초점이 간다
+    readonly: true, autofocus: true, rows: 7, class: 'feedback-manual-text', 'data-testid': 'feedback-manual-text',
     onFocus: (e) => e.target.select(),
   }, text);
   fill(root,
@@ -128,6 +130,4 @@ export function renderManualFeedback(root, { rule, type, onClose }) {
       h('p', { class: 'small' }, '자동으로 보내거나 복사하지 못했습니다. 아래 내용을 길게 눌러 복사한 뒤 메모·메시지로 보내 주세요.'),
       textarea,
       h('div', { class: 'sheet__actions' }, h('button', { type: 'button', class: 'btn btn--ghost', onClick: onClose }, '닫기'))));
-  textarea.focus();
-  textarea.select();
 }

@@ -429,20 +429,22 @@ div.pass__main { cursor: default; }
 .update-banner[hidden] { display: none; }
 
 /* ---------- 시트 ---------- */
+/* iOS 대응 구조(2026-10-02): dialog 자체는 움직이지도 스크롤하지도 않는 틀이다.
+   제목 줄은 스크롤 밖에 두고 본문(.sheet__body)만 스크롤한다. 애니메이션은 쓰지 않는다. */
 .sheet {
-  width: 100%; max-width: 560px; max-height: 100dvh; height: 100dvh;
+  width: 100%; max-width: 560px; height: 100vh; height: 100dvh; height: var(--vvh, 100dvh); max-height: 100vh; max-height: 100dvh; max-height: var(--vvh, 100dvh);
   margin: 0 auto; padding: 0; border: 0;
   background: var(--card); color: var(--ink);
-  overflow-y: auto; overscroll-behavior: contain;
+  overflow: hidden;
 }
+.sheet[open] { display: flex; flex-direction: column; }
 .sheet::backdrop { background: rgba(15, 31, 61, 0.55); }
-.sheet[open] { animation: sheet-in 220ms var(--ease-out); }
-@keyframes sheet-in { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.sheet > .sheet__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 @media (min-width: 600px) {
   .sheet { height: auto; max-height: calc(100dvh - 48px); margin-top: 24px; border-radius: 12px; }
 }
 .sheet__head {
-  position: sticky; top: 0; z-index: 2;
+  position: relative; flex: none; z-index: 2;
   display: flex; align-items: center; justify-content: space-between;
   padding: calc(8px + env(safe-area-inset-top)) 8px 8px 16px;
   background: var(--ink); color: #fff;
@@ -695,10 +697,11 @@ legend { font-weight: 800; font-size: 15px; padding: 0; margin-bottom: 8px; }
   box-shadow: 3px 0 0 var(--sky-line);
 }
 
-/* ---------- iOS 시트 진단 모드 (임시, ?diag=) ---------- */
-html[data-diag*="A"] .sheet[open] { animation: none !important; }
-html[data-diag*="B"] .sheet[open] { display: flex; flex-direction: column; overflow: hidden; }
-html[data-diag*="B"] .sheet[open] > .sheet__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-html[data-diag*="C"] .sheet__head { position: relative; }
-.diag-panel { position: fixed; left: 6px; right: 6px; bottom: 6px; z-index: 9; margin: 0; padding: 8px; max-height: 40vh; overflow: auto;
-  font: 11px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; background: #fffbe6; color: #111; border: 2px solid #c00; border-radius: 6px; }
+
+.transport-rule { padding: 8px 10px; border-radius: 8px; background: var(--info-bg, #E8EEF7); }
+.transport-rule--none-regular, .transport-rule--none-performance-only { background: #FFF4D6; color: #6B4A00; font-weight: 600; }
+
+/* dialog(showModal) 미지원 브라우저(iOS 15.4 미만) 대체 시트 */
+.sheet--fallback { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; box-shadow: 0 0 0 100vmax rgba(15, 31, 61, 0.55); }
+.sheet--over.sheet--fallback { z-index: 70; }
+body.has-fallback-sheet { overflow: hidden; }

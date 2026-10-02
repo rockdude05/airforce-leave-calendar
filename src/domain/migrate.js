@@ -28,5 +28,22 @@ export function migrateState(input) {
   }
   const issues = validateState(input, { version: 2 });
   if (hasErrors(issues)) return { ok: false, issues };
+  const ruled = migrateRules(/** @type {any} */ (input));
+  if (ruled !== input) return { ok: true, state: ruled, migrated: true, issues: validateState(ruled, { version: 2 }) };
   return { ok: true, state: input, migrated: false, issues };
+}
+
+/**
+ * 규칙 버전 이행 (같은 2판 안).
+ * unit-user-2026-10-02 → .2: 성과제 회차 기준이 '수료일 다음 날'에서 '수료일'로 하루 당겨져
+ * 마지막 덜 찬 회차 기간이 바뀐다 → 예전 기준으로 입력한 마지막 회차 일수는 '확인 필요'(null)로 되돌린다.
+ * 저장된 출타 일정은 바꾸지 않는다.
+ */
+export function migrateRules(state) {
+  if (!state || state.ruleVersion === RULE_VERSION) return state;
+  const next = { ...state, ruleVersion: RULE_VERSION };
+  if (state.ruleVersion === 'unit-user-2026-10-02' && state.service && state.service.lastPerformanceDays !== null) {
+    next.service = { ...state.service, lastPerformanceDays: null };
+  }
+  return next;
 }

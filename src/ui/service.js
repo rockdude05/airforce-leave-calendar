@@ -154,7 +154,6 @@ export function renderServiceForm(root, { service, today, onSave, onClose }) {
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': '닫기', onClick: onClose }, '✕')),
     form);
   renderDates();
-  form.querySelector('#svc-enlist').focus();
   return { isDirty: () => JSON.stringify(draft) !== pristine };
 }
 
