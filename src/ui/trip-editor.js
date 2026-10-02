@@ -1,4 +1,5 @@
 import { h, fill, formatDate, issueList, shortDate } from './dom.js';
+import { diagOn } from '../diag.js';
 import { addDays, inclusiveDays, isDateOnly, compareDates } from '../domain/dates.js';
 import { SEGMENT_KIND_LABELS, TRIP_STATUS_LABELS, emptyTransport, newId } from '../domain/model.js';
 import { validateTrip, LIMITS } from '../domain/validation.js';
@@ -247,7 +248,9 @@ export function renderTripEditor(root, opts) {
     form);
   renderSegments();
   update();
-  form.querySelector('#trip-title')?.focus();
+  const title = form.querySelector('#trip-title');
+  if (diagOn('E')) root.addEventListener('animationend', () => title?.focus(), { once: true });
+  else if (!diagOn('D')) title?.focus();
 
   return { isDirty: () => JSON.stringify(draft) !== pristine };
 }

@@ -694,3 +694,11 @@ legend { font-weight: 800; font-size: 15px; padding: 0; margin-bottom: 8px; }
   background: var(--camo) 0 0 / 48px 48px;
   box-shadow: 3px 0 0 var(--sky-line);
 }
+
+/* ---------- iOS 시트 진단 모드 (임시, ?diag=) ---------- */
+html[data-diag*="A"] .sheet[open] { animation: none !important; }
+html[data-diag*="B"] .sheet[open] { display: flex; flex-direction: column; overflow: hidden; }
+html[data-diag*="B"] .sheet[open] > .sheet__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+html[data-diag*="C"] .sheet__head { position: relative; }
+.diag-panel { position: fixed; left: 6px; right: 6px; bottom: 6px; z-index: 9; margin: 0; padding: 8px; max-height: 40vh; overflow: auto;
+  font: 11px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; background: #fffbe6; color: #111; border: 2px solid #c00; border-radius: 6px; }

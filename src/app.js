@@ -10,6 +10,7 @@ import { renderGrants, renderGrantForm, renderVisitForm } from './ui/grants.js';
 import { renderTripEditor } from './ui/trip-editor.js';
 import { renderSettings, renderRestoreConfirm } from './ui/settings.js';
 import { renderGuide } from './ui/guide.js';
+import { diagOn, diagReport } from './diag.js';
 import { renderServiceForm } from './ui/service.js';
 import { computeSchedule, validateService } from './domain/service.js';
 import { addDays } from './domain/dates.js';
@@ -112,8 +113,14 @@ window.addEventListener('storage', (e) => {
 
 function openSheet(renderFn) {
   sheet.replaceChildren();
-  if (!sheet.open) sheet.showModal();
-  sheetHandle = renderFn(sheet) ?? null;
+  if (diagOn('F')) {
+    sheetHandle = renderFn(sheet) ?? null;
+    if (!sheet.open) sheet.showModal();
+  } else {
+    if (!sheet.open) sheet.showModal();
+    sheetHandle = renderFn(sheet) ?? null;
+  }
+  diagReport(sheet);
 }
 
 function closeSheet({ force = false } = {}) {
