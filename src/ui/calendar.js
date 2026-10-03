@@ -55,7 +55,7 @@ function pass({ state, balances, today, onOpenTrip, onAddTrip }) {
     body = h('div', { class: 'pass__main' },
       h('span', { class: 'pass__label' }, '다음 출타'),
       h('strong', { class: 'pass__title pass__title--empty' }, state.grants.length ? '계획한 출타가 없습니다' : '보유 휴가부터 입력하세요'),
-      h('button', { type: 'button', class: 'btn btn--small btn--ghost', onClick: onAddTrip }, state.grants.length ? '일정 추가' : '내 휴가 입력'));
+      h('button', { type: 'button', class: 'btn btn--small btn--ghost', onClick: () => onAddTrip() }, state.grants.length ? '일정 추가' : '내 휴가 입력'));
   }
   return h('section', { class: 'pass', 'aria-label': '출타증 요약' },
     body,
