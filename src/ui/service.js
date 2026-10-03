@@ -21,6 +21,31 @@ export function dotDate(date) {
   return `${y}.${m}.${d} (${weekdayName(weekday(date))})`;
 }
 
+/** '2027-01-04' → '2027.1.4' */
+export function plainDot(date) {
+  const [y, m, d] = date.split('-').map(Number);
+  return `${y}.${m}.${d}`;
+}
+
+/** 정기휴가 자동 지급 미리보기 한 줄 — 저장과 같은 계획(rows)으로 그린다 */
+export function autoGrantRowText(r) {
+  const val = (v) => (v ? `${r.rank} ${v.amount}일${v.availableFrom ? ` — ${plainDot(v.availableFrom)}부터` : ''}` : r.rank);
+  switch (r.action) {
+    case 'add': return `${val(r.planned)} · 저장하면 추가`;
+    case 'move': return `${val(r.planned)} · 저장하면 시작일 이동`;
+    case 'keep': return `${val(r.planned)} · 진급일 연동 중`;
+    case 'unlink': return `${val(r.current)} · 진급일이 지나 연동을 멈춥니다`;
+    case 'past': return `${r.rank} — 이미 진급 · 내 휴가에서 남은 일수 직접 입력`;
+    case 'manual': return `${val(r.current)} · 직접 넣은 휴가가 있어 자동으로 넣지 않음`;
+    case 'fixed': return `${val(r.current)} · 진급일 연동이 멈춘 휴가(그대로 둠)`;
+    case 'suppressed': return `${r.rank} — 지운 휴가라 다시 넣지 않음`;
+    default: return '';
+  }
+}
+
+/** 계획 요약 — 미리보기와 저장 시점 계획이 같은지 비교한다 */
+export const autoGrantPlanKey = (rows) => (rows ?? []).map((r) => `${r.kind}:${r.action}`).join(',');
+
 function emptyService() {
   return { enlistDate: '', performanceCycleWeeks: 8, overrides: { graduation: null, privateFirst: null, corporal: null, sergeant: null, discharge: null }, lastPerformanceDays: null };
 }
@@ -37,7 +62,7 @@ function previewSchedule(draft, today) {
  * @param {HTMLElement} root
  * @param {{service:any|null, today:string, onSave:(service:any, meta:{lastDaysSpan:string|null})=>{ok:boolean,issues?:any[],error?:string}, onClose:()=>void}} opts
  */
-export function renderServiceForm(root, { service, today, onSave, onClose }) {
+export function renderServiceForm(root, { service, today, onSave, onClose, previewAutoGrants = () => null }) {
   const draft = service ? structuredClone(service) : emptyService();
   const pristine = JSON.stringify(draft);
   /** 직접 수정 입력칸을 연 날짜 */
@@ -54,8 +79,14 @@ export function renderServiceForm(root, { service, today, onSave, onClose }) {
 
   const datesBox = h('div', { class: 'svc-dates', 'aria-live': 'polite' });
   const out = h('div', { class: 'issue-box' });
+  /** 지금 화면에 보이는 정기휴가 자동 지급 계획 */
+  let autoRows = null;
+  /** 저장이 막힌 자동 휴가 계급 — "날짜 그대로 두고 저장" 대상 */
+  let blocked = [];
 
   function renderDates(focusId) {
+    // 입력이 바뀌면 이전 저장 거부의 "날짜 그대로 두고 저장" 대상은 더 이상 맞지 않는다
+    if (blocked.length) { blocked = []; refreshIssues(); }
     const s = previewSchedule(draft, today);
     if (s) {
       const span = spanOf(s);
@@ -65,9 +96,11 @@ export function renderServiceForm(root, { service, today, onSave, onClose }) {
       }
     }
     if (!s) {
+      autoRows = null;
       fill(datesBox, h('p', { class: 'muted small' }, '입대일을 넣으면 수료일·진급일·전역일·성과제 날짜를 계산해 보여 줍니다.'));
       return;
     }
+    autoRows = previewAutoGrants(draft);
     const rows = DATE_KEYS.map((key) => {
       const overridden = draft.overrides[key] !== null;
       const inputId = `svc-ov-${key}`;
@@ -117,25 +150,38 @@ export function renderServiceForm(root, { service, today, onSave, onClose }) {
                 draft.lastPerformanceDays = v === '' ? null : Number(v);
                 daysSpan = currentSpan;
                 renderDates('svc-last-days');
-              } }))) : null));
+              } }))) : null),
+      autoRows ? h('div', { class: 'svc-auto', 'data-testid': 'svc-auto-grants' },
+        h('h3', { class: 'sub-title' }, '정기휴가 자동 지급'),
+        h('p', { class: 'small' }, '앞으로 진급할 계급의 정기휴가는 저장할 때 진급일부터 쓸 수 있게 자동으로 넣습니다. 이미 진급한 계급은 남은 일수를 직접 입력하세요.'),
+        h('ul', { class: 'svc-auto__list' }, autoRows.map((r) => h('li', { class: `svc-auto__row svc-auto__row--${r.action}` }, autoGrantRowText(r)))),
+        h('p', { class: 'muted small' }, '진급일을 고치면 자동으로 넣은 휴가의 시작일도 따라갑니다. 휴가의 일수나 날짜를 직접 고치면 연동을 멈춥니다. 만료 기한은 부대 기준이 확인되지 않아 비워 둡니다.')) : null);
     if (focusId) datesBox.querySelector(`#${CSS.escape(focusId)}`)?.focus();
   }
 
-  const refreshIssues = () => fill(out, ...[issueList(issues, { id: 'svc-issues' }), error ? h('p', { class: 'form-error', role: 'alert' }, error) : null].filter(Boolean));
+  const refreshIssues = () => fill(out, ...[issueList(issues, { id: 'svc-issues' }), error ? h('p', { class: 'form-error', role: 'alert' }, error) : null,
+    blocked.length ? h('div', { class: 'svc-keep' },
+      h('p', { class: 'small' }, '진급일을 옮기면 이미 잡아 둔 일정이 그 정기휴가를 쓸 수 없는 날짜가 됩니다. 일정은 그대로 두고, 그 휴가의 날짜도 그대로 둔 채 연동만 멈추고 저장할 수 있습니다.'),
+      h('button', { type: 'button', class: 'btn btn--ghost btn--block', 'data-testid': 'svc-keep-dates', onClick: () => submit({ keepDates: blocked }) }, '이 휴가는 날짜 그대로 두고 저장')) : null].filter(Boolean));
 
-  const form = h('form', { class: 'sheet__body', novalidate: true, onSubmit: (e) => {
-    e.preventDefault();
+  function submit(opts = {}) {
     const candidate = structuredClone(draft);
     if (candidate.lastPerformanceDays !== null && !Number.isFinite(candidate.lastPerformanceDays)) candidate.lastPerformanceDays = NaN;
-    const r = onSave(candidate, { lastDaysSpan: daysSpan });
+    // 날짜 그대로 두고 저장도 화면에 보인 계획(날짜 유지 적용 전)과 비교한다
+    const meta = { lastDaysSpan: daysSpan, previewKey: autoGrantPlanKey(autoRows) };
+    const r = onSave(candidate, meta, opts);
     if (r.ok) return;
+    if (r.refreshPreview) renderDates();
     issues = r.issues ?? [];
     error = r.error ?? '';
+    blocked = r.blocked ?? [];
     refreshIssues();
     const target = out.querySelector('#svc-issues, .form-error');
     target?.setAttribute('tabindex', '-1');
     /** @type {HTMLElement|null} */ (target)?.focus();
-  } },
+  }
+
+  const form = h('form', { class: 'sheet__body', novalidate: true, onSubmit: (e) => { e.preventDefault(); submit(); } },
   h('p', { class: 'small' }, '입대일과 성과제 주기를 넣으면 날짜를 계산합니다. 부대에서 받은 날짜가 다르면 그 날짜만 직접 고치세요.'),
   h('div', { class: 'field-row' },
     h('div', { class: 'field' }, h('label', { for: 'svc-enlist' }, '입대일'),

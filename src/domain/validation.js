@@ -1,7 +1,7 @@
 import { compareDates, isDateOnly, addDays, koreanDate } from './dates.js';
 import {
   GRANT_KINDS, SEGMENT_KINDS, TRIP_STATUSES, TRANSPORT_ASSESSMENTS, SEGMENT_KIND_LABELS, VISIT_PRINCIPLE_LIMIT, OUTING_MONTHLY_LIMIT,
-  MERIT_POINTS_MAX, MERIT_PER_DAY_MAX,
+  MERIT_POINTS_MAX, MERIT_PER_DAY_MAX, PROMOTION_KINDS, PROMOTION_STATUSES,
 } from './model.js';
 import { validateService } from './service.js';
 import { allocationByGrant, grantWindow, inGrantWindow, isActiveTrip, visitCounts } from './balances.js';
@@ -322,12 +322,45 @@ export function validateMerit(merit, { stored = true } = {}) {
   return out;
 }
 
+/* ---------------- 정기휴가 자동 지급 기록 ---------------- */
+
+/**
+ * managed = 진급일 연동 중(휴가 kind가 계급과 같아야 함), fixed = 연동 멈춤(사용자가 종류를 바꿨을 수 있음),
+ * suppressed = 사용자가 지움(grantId null). 문구에 식별자를 넣지 않는다.
+ * @returns {Issue[]}
+ */
+export function validatePromotionGrants(pg, grants) {
+  if (!exactKeys(pg, PROMOTION_KINDS)) return [err('PROMO_SHAPE', '정기휴가 자동 지급 기록 형식이 올바르지 않습니다.')];
+  const out = [];
+  const seen = new Set();
+  for (const kind of PROMOTION_KINDS) {
+    const e = pg[kind];
+    if (e === null) continue;
+    if (!exactKeys(e, ['grantId', 'status']) || !PROMOTION_STATUSES.includes(e.status) || !(e.grantId === null || typeof e.grantId === 'string')) {
+      out.push(err('PROMO_SHAPE', '정기휴가 자동 지급 기록 형식이 올바르지 않습니다.'));
+      continue;
+    }
+    if (e.status === 'suppressed') {
+      if (e.grantId !== null) out.push(err('PROMO_REF', '지운 자동 정기휴가 기록이 올바르지 않습니다.'));
+      continue;
+    }
+    // 휴가 항목이 망가진 기록(null 등)이어도 예외 없이 오류로 돌려준다
+    const g = e.grantId === null ? null : grants.find((x) => x && typeof x === 'object' && x.id === e.grantId);
+    if (!g) { out.push(err('PROMO_REF', '자동으로 넣은 정기휴가를 찾을 수 없습니다.')); continue; }
+    if (seen.has(e.grantId)) out.push(err('PROMO_REF', '자동 정기휴가 기록이 같은 휴가를 두 번 가리킵니다.'));
+    seen.add(e.grantId);
+    if (e.status === 'managed' && g.kind !== kind) out.push(err('PROMO_REF', '진급일 연동 휴가의 종류가 계급과 다릅니다.'));
+  }
+  return out;
+}
+
 /* ---------------- 전체 상태 (저장·복원) ---------------- */
 
 const STATE_KEYS_BY_VERSION = {
   1: ['schemaVersion', 'ruleVersion', 'grants', 'trips', 'settings'],
   2: ['schemaVersion', 'ruleVersion', 'grants', 'trips', 'settings', 'service'],
   3: ['schemaVersion', 'ruleVersion', 'grants', 'trips', 'settings', 'service', 'merit'],
+  4: ['schemaVersion', 'ruleVersion', 'grants', 'trips', 'settings', 'service', 'merit', 'promotionGrants'],
 };
 
 const KEYS = {
@@ -346,12 +379,12 @@ function exactKeys(obj, keys) {
 
 /**
  * 외부 입력(unknown)을 전체 상태로 검증한다. error가 하나라도 있으면 사용하지 않는다.
- * version은 검증할 기록 판(1·2·3). 이행기는 1판 원본을 1판 규칙으로 먼저 검증한다.
+ * version은 검증할 기록 판(1·2·3·4). 이행기는 1판 원본을 1판 규칙으로 먼저 검증한다.
  * @param {unknown} input
- * @param {{version?: 1|2|3}} [opts]
+ * @param {{version?: 1|2|3|4}} [opts]
  * @returns {Issue[]}
  */
-export function validateState(input, { version = 3 } = {}) {
+export function validateState(input, { version = 4 } = {}) {
   const stateKeys = STATE_KEYS_BY_VERSION[version];
   if (!stateKeys) throw new RangeError(`unsupported validation version: ${String(version)}`);
   if (!exactKeys(input, stateKeys)) return [err('STATE_SHAPE', '앱 기록 형식이 아닙니다.')];
@@ -392,6 +425,7 @@ export function validateState(input, { version = 3 } = {}) {
   out.push(...validateSettings(s, s.settings));
   if (version >= 2) out.push(...validateService(s.service));
   if (version >= 3) out.push(...validateMerit(s.merit));
+  if (version >= 4 && Array.isArray(s.grants)) out.push(...validatePromotionGrants(s.promotionGrants, s.grants));
   if (out.some((i) => i.severity === 'error')) return dedupe(out);
 
   // 구조가 유효할 때만 상호 불변식 검사

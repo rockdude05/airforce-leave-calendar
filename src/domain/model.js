@@ -1,7 +1,7 @@
 import { isDateOnly } from './dates.js';
 
-export const SCHEMA_VERSION = 3;
-export const RULE_VERSION = 'unit-user-2026-10-02.2';
+export const SCHEMA_VERSION = 4;
+export const RULE_VERSION = 'unit-user-2026-10-03';
 export const STORAGE_KEY = 'airforce-leave-calendar:v1';
 export const VISIT_PRINCIPLE_LIMIT = 7;
 /** 일반 외출: 한 달 2회, 남은 횟수는 다음 달로 넘어가지 않음 (2026-10-02 사용자 확인) */
@@ -55,6 +55,7 @@ export function createEmptyState(today) {
     settings: { visitBaselineCount: 0, visitBaselineAsOf: today },
     service: null,
     merit: emptyMerit(),
+    promotionGrants: emptyPromotionGrants(),
   };
 }
 
@@ -63,6 +64,15 @@ export function ruleVersionLabel(v = RULE_VERSION) {
   const m = /(\d{4})-(\d{2})-(\d{2})(?:\.(\d+))?$/.exec(v);
   if (!m) return '사용자 확인 규칙';
   return `${Number(m[1])}년 ${Number(m[2])}월 ${Number(m[3])}일 기준${m[4] ? ` (${m[4]}차)` : ''}`;
+}
+
+/** 정기휴가 자동 지급 대상 계급(진급 순서) — 2026-10-03 사용자 승인 */
+export const PROMOTION_KINDS = Object.freeze(['regular-private-first', 'regular-corporal', 'regular-sergeant']);
+export const PROMOTION_STATUSES = Object.freeze(['managed', 'fixed', 'suppressed']);
+
+/** 계급별 자동 지급 기록: null = 아직 처리 안 함 */
+export function emptyPromotionGrants() {
+  return Object.fromEntries(PROMOTION_KINDS.map((k) => [k, null]));
 }
 
 /** 가점 없음·기준 없음 */

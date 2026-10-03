@@ -4,6 +4,7 @@ import { createEmptyState, STORAGE_KEY, RULE_VERSION, newId } from './domain/mod
 import { calculateBalances } from './domain/balances.js';
 import { validateTrip, validateGrantChange, validateGrantDelete, validateSettings } from './domain/validation.js';
 import { convertMerit } from './domain/merit.js';
+import { planPromotionGrants, promotionEntryAfterEdit, promotionGrantsAfterDelete, entryForGrant } from './domain/promotion.js';
 import { loadState, saveState, serializeBackup, parseBackup, MAX_BACKUP_BYTES } from './storage.js';
 import { h, fill } from './ui/dom.js';
 import { renderCalendar } from './ui/calendar.js';
@@ -11,7 +12,7 @@ import { renderGrants, renderGrantForm, renderVisitForm, renderMeritForm } from 
 import { renderTripEditor } from './ui/trip-editor.js';
 import { renderSettings, renderRestoreConfirm } from './ui/settings.js';
 import { renderGuide } from './ui/guide.js';
-import { renderServiceForm } from './ui/service.js';
+import { renderServiceForm, plainDot, autoGrantPlanKey } from './ui/service.js';
 import { computeSchedule, validateService } from './domain/service.js';
 import { addDays } from './domain/dates.js';
 import { APP_VERSION } from './version.js';
@@ -279,14 +280,19 @@ function openGrant(id, { initialKind } = {}) {
   const grant = id ? state.grants.find((g) => g.id === id) : null;
   const base = grant ? JSON.stringify(grant) : null;
   openSheet((root) => renderGrantForm(root, {
-    grant, today, initialKind, usage: grant ? calculateBalances(state, today).byGrant[grant.id] : null,
+    grant, today, initialKind, auto: grant ? entryForGrant(state.promotionGrants, grant.id)?.entry.status ?? null : null, usage: grant ? calculateBalances(state, today).byGrant[grant.id] : null,
     onSave: (candidate, replaceId) => {
       const stale = staleCheck(state.grants, replaceId, base);
       if (stale) return { ok: false, error: stale };
       const issues = validateGrantChange(state, candidate, replaceId);
       if (issues.some((i) => i.severity === 'error')) return { ok: false, issues };
       const grants = replaceId ? state.grants.map((g) => (g.id === replaceId ? candidate : g)) : [...state.grants, candidate];
-      const r = commit({ ...state, grants }, replaceId ? '휴가를 수정했습니다.' : '휴가를 추가했습니다.');
+      // 자동 정기휴가를 고치면(이름만 바꾼 경우 제외) 진급일 연동을 멈춘다 — 같은 저장에서
+      const hit = replaceId ? entryForGrant(state.promotionGrants, replaceId) : null;
+      const promotionGrants = hit ? { ...state.promotionGrants, [hit.kind]: promotionEntryAfterEdit(hit.entry, grant, candidate) } : state.promotionGrants;
+      const unlinked = hit && hit.entry.status === 'managed' && promotionGrants[hit.kind].status === 'fixed';
+      const r = commit({ ...state, grants, promotionGrants }, replaceId
+        ? `휴가를 수정했습니다.${unlinked ? ' 직접 고친 정기휴가라 진급일 연동을 멈췄습니다.' : ''}` : '휴가를 추가했습니다.');
       if (r.ok) closeSheet({ force: true });
       return r;
     },
@@ -295,7 +301,8 @@ function openGrant(id, { initialKind } = {}) {
       if (stale) return { ok: false, error: stale };
       const issues = validateGrantDelete(state, gid);
       if (issues.length) return { ok: false, issues };
-      const r = commit({ ...state, grants: state.grants.filter((g) => g.id !== gid) }, '휴가를 삭제했습니다.');
+      // 자동 정기휴가를 지우면 복무 정보를 다시 저장해도 다시 넣지 않는다 — 같은 저장에서
+      const r = commit({ ...state, grants: state.grants.filter((g) => g.id !== gid), promotionGrants: promotionGrantsAfterDelete(state.promotionGrants, gid) }, '휴가를 삭제했습니다.');
       if (r.ok) closeSheet({ force: true });
       return r;
     },
@@ -354,14 +361,57 @@ const partialSpan = (svc) => {
  * 안전장치: 일수 값이 입력된 때의 기간(meta.lastDaysSpan)과 저장할 기간이 다르면 일수는 '확인 필요'(null).
  * 저장된 출타 일정은 건드리지 않는다.
  */
-function saveService(candidate, meta = {}) {
+/**
+ * 정기휴가 자동 지급 계획. keepDates 계급은 저장 전 상태에서 먼저 연동을 멈춘 뒤 계산한다
+ * (이미 옮긴 결과에 상태만 바꾸면 날짜가 옮겨진 채라 다시 막힌다).
+ */
+function autoGrantPlan(service, keepDates = [], makeId = (p) => `${p}-preview`) {
+  const promotionGrants = { ...state.promotionGrants };
+  for (const k of keepDates) if (promotionGrants[k]?.status === 'managed') promotionGrants[k] = { ...promotionGrants[k], status: 'fixed' };
+  // 미리보기는 가짜 ID로 계산한다 — 실제 ID는 저장 때만 만든다
+  return planPromotionGrants({ ...state, promotionGrants }, service, { today, newId: makeId });
+}
+
+/** 저장 결과를 사용자에게 한 문장씩 알린다 */
+function autoGrantMessage(rows, keepDates) {
+  const add = rows.filter((r) => r.action === 'add');
+  const parts = [];
+  if (add.length) parts.push(`${add.map((r) => `${r.rank} ${r.planned.amount}일`).join('·')} 정기휴가를 진급일부터 쓸 수 있게 넣었습니다.`);
+  for (const r of rows.filter((x) => x.action === 'move')) parts.push(`${r.rank} 정기휴가 사용 시작일을 ${plainDot(r.planned.availableFrom)}로 옮겼습니다.`);
+  for (const r of rows.filter((x) => x.action === 'unlink')) parts.push(`${r.rank} 진급일이 지나 자동 연동을 멈췄습니다 — 남은 일수를 확인하세요.`);
+  for (const k of keepDates) { const r = rows.find((x) => x.kind === k); if (r) parts.push(`${r.rank} 정기휴가는 날짜를 그대로 두고 연동을 멈췄습니다.`); }
+  return parts.join(' ');
+}
+
+function saveService(candidate, meta = {}, { keepDates = [] } = {}) {
+  // 시트를 켜 둔 채 자정을 넘겼으면 오늘 날짜부터 다시 읽는다(오늘 진급분을 미래로 보지 않게)
+  const now = seoulToday();
+  if (now !== today) { today = now; render(); }
   const issues = validateService(candidate);
   if (issues.some((i) => i.severity === 'error')) return { ok: false, issues };
   const carried = 'lastDaysSpan' in meta ? meta.lastDaysSpan : partialSpan(state.service);
   const next = candidate.lastPerformanceDays !== null && carried !== partialSpan(candidate)
     ? { ...candidate, lastPerformanceDays: null } : candidate;
-  const r = commit({ ...state, service: next }, next.lastPerformanceDays !== candidate.lastPerformanceDays
-    ? '복무 정보를 저장했습니다. 마지막 성과제 기간이 바뀌어 일수를 다시 확인해 주세요.' : '복무 정보를 저장했습니다.');
+  // 시트를 연 뒤 날짜가 바뀌었거나 다른 창에서 휴가가 바뀌면 보여 준 내용과 다르게 저장되지 않게 멈춘다.
+  // 비교는 화면이 보여 준 것과 같은 조건(날짜 유지 적용 전)으로 한다.
+  const preview = autoGrantPlan(next);
+  if (meta.previewKey !== undefined && autoGrantPlanKey(preview.rows) !== meta.previewKey) {
+    return { ok: false, refreshPreview: true, error: '그사이 날짜나 기록이 바뀌어 정기휴가 처리 내용이 달라졌습니다 — 아래 내용을 확인하고 다시 저장해 주세요.' };
+  }
+  const plan = autoGrantPlan(next, keepDates, newId);
+  const after = { ...state, service: next, grants: plan.grants, promotionGrants: plan.promotionGrants };
+  // 옮긴 자동 휴가 때문에 이미 잡아 둔 일정이 범위를 벗어나면 저장하지 않고, 날짜를 그대로 두는 선택을 준다
+  const blockedIssues = [];
+  const blocked = [];
+  for (const r of plan.rows.filter((x) => x.action === 'move')) {
+    const g = plan.grants.find((x) => x.id === plan.promotionGrants[r.kind].grantId);
+    const errs = validateGrantChange(after, g, g.id).filter((i) => i.severity === 'error');
+    if (errs.length) { blocked.push(r.kind); blockedIssues.push(...errs); }
+  }
+  if (blocked.length) return { ok: false, issues: blockedIssues, blocked };
+  const lastNote = next.lastPerformanceDays !== candidate.lastPerformanceDays ? ' 마지막 성과제 기간이 바뀌어 일수를 다시 확인해 주세요.' : '';
+  const autoNote = autoGrantMessage(plan.rows, keepDates);
+  const r = commit(after, `복무 정보를 저장했습니다.${lastNote}${autoNote ? ` ${autoNote}` : ''}`);
   if (r.ok) closeSheet({ force: true });
   return r;
 }
@@ -370,7 +420,9 @@ function openService() {
   const base = JSON.stringify(state.service);
   openSheet((root) => renderServiceForm(root, {
     service: state.service, today,
-    onSave: (candidate, meta) => (JSON.stringify(state.service) !== base ? { ok: false, error: STALE_EDIT } : saveService(candidate, meta)),
+    onSave: (candidate, meta, opts) => (JSON.stringify(state.service) !== base ? { ok: false, error: STALE_EDIT } : saveService(candidate, meta, opts)),
+    // 미리보기와 저장이 같은 계획 함수·최신 기록·최신 날짜를 쓴다
+    previewAutoGrants: (draft) => (validateService(draft).some((i) => i.severity === 'error') ? null : autoGrantPlan(draft).rows),
     onClose: () => closeSheet(),
   }));
 }

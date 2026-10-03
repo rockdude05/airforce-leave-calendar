@@ -22,6 +22,8 @@ export function renderGrants(root, { state, balances, today, schedule = null, on
       || (a.expiresOn ?? '9999').localeCompare(b.expiresOn ?? '9999') || a.balanceAsOf.localeCompare(b.balanceAsOf);
   });
   const kindTotals = kindSummary(state.grants, balances);
+  // 진급일에 연동 중인 자동 정기휴가
+  const linked = new Set(Object.values(state.promotionGrants ?? {}).filter((e) => e?.status === 'managed').map((e) => e.grantId));
 
   const summary = h('section', { class: 'totals', 'aria-label': '휴가 합계' },
     h('div', { class: 'totals__item totals__item--main' },
@@ -40,8 +42,9 @@ export function renderGrants(root, { state, balances, today, schedule = null, on
       return h('li', null, h('button', { type: 'button', class: `grant grant--${b.status}`, onClick: () => onEditGrant(g.id) },
         h('span', { class: 'grant__top' },
           h('strong', { class: 'grant__label' }, g.label),
-          h('span', { class: 'grant__chips' }, expiryChip(b, today), h('span', { class: `chip chip--${b.status}` }, STATUS_LABEL[b.status]))),
-        h('span', { class: 'grant__kind muted small' }, g.label === GRANT_KIND_LABELS[g.kind] ? '' : `${GRANT_KIND_LABELS[g.kind]} · `, windowText(b)),
+          h('span', { class: 'grant__chips' }, linked.has(g.id) ? h('span', { class: 'chip chip--auto' }, '진급일 연동') : null,
+            expiryChip(b, today), h('span', { class: `chip chip--${b.status}` }, STATUS_LABEL[b.status]))),
+        h('span', { class: 'grant__kind muted small' }, g.label === GRANT_KIND_LABELS[g.kind] ? '' : `${GRANT_KIND_LABELS[g.kind]} · `, windowText(b, today)),
         h('span', { class: 'grant__nums' },
           num('등록', g.amount), num('사용', b.used), num('사용 후', b.remaining), num('계획', b.planned), num('계획 후', b.afterPlans, true))));
     }))
@@ -59,7 +62,9 @@ export function renderGrants(root, { state, balances, today, schedule = null, on
       h('div', { class: 'section-head' },
         h('h2', { id: 'grants-title', class: 'section-title' }, '보유 휴가'),
         h('button', { type: 'button', class: 'btn btn--primary btn--small', 'data-testid': 'add-grant', onClick: onAddGrant }, '휴가 추가')),
-      list),
+      list,
+      linked.size ? h('p', { class: 'muted small auto-grant-note', 'data-testid': 'auto-grant-note' },
+        '‘진급일 연동’은 복무 정보의 진급일부터 쓸 수 있게 앱이 넣은 정기휴가입니다. 진급일을 고치면 시작일이 따라가고, 일수나 날짜를 직접 고치면 연동을 멈춥니다.') : null),
     h('section', { class: 'visits', 'aria-labelledby': 'visits-title' },
       h('div', { class: 'section-head' },
         h('h2', { id: 'visits-title', class: 'section-title' }, '면회외출'),
@@ -80,9 +85,11 @@ export function renderGrants(root, { state, balances, today, schedule = null, on
       h('ul', { class: 'trip-list' }, cancelled.map((t) => tripCard(t, grantById, onOpenTrip)))) : null);
 }
 
-function windowText(b) {
-  if (b.windowEnd) return `${formatDate(b.windowStart, { weekday: false })}~${formatDate(b.windowEnd, { weekday: false })} 사용`;
-  return `${formatDate(b.windowStart, { weekday: false })}부터 사용`;
+/** 올해가 아닌 날짜는 연도를 붙인다(예: 진급일 연동 병장 휴가 2027년 6월 1일) */
+function windowText(b, today) {
+  const d = (date) => formatDate(date, { weekday: false, year: date.slice(0, 4) !== today.slice(0, 4) });
+  if (b.windowEnd) return `${d(b.windowStart)}~${d(b.windowEnd)} 사용`;
+  return `${d(b.windowStart)}부터 사용`;
 }
 
 function num(label, value, strong = false) {
@@ -93,7 +100,7 @@ function num(label, value, strong = false) {
  * 지급 건 입력 시트
  * @param {HTMLElement} root
  */
-export function renderGrantForm(root, { grant, today, usage, initialKind, onSave, onDelete, onClose }) {
+export function renderGrantForm(root, { grant, today, usage, initialKind, auto = null, onSave, onDelete, onClose }) {
   const isNew = !grant;
   const startKind = initialKind && GRANT_KINDS.includes(initialKind) ? initialKind : 'regular-private-first';
   const draft = grant ? { ...grant } : { id: newId('g'), kind: startKind, label: GRANT_KIND_LABELS[startKind], amount: '', balanceAsOf: today, availableFrom: null, expiresOn: null };
@@ -107,7 +114,7 @@ export function renderGrantForm(root, { grant, today, usage, initialKind, onSave
   const refresh = () => {
     const g = REGULAR_GUIDE[draft.kind];
     if (!isNew) guide.textContent = '';
-    else if (g) guide.textContent = `부대 기준: ${GRANT_KIND_LABELS[draft.kind]} ${g}일. 이미 쓴 날을 뺀, 지금 남은 일수만 입력하세요. 진급해서 새로 받은 정기휴가는 기존 휴가를 고치지 말고 이렇게 새로 추가합니다.`;
+    else if (g) guide.textContent = `부대 기준: ${GRANT_KIND_LABELS[draft.kind]} ${g}일. 이미 쓴 날을 뺀, 지금 남은 일수만 입력하세요. "진급일 연동" 표시가 붙은 같은 계급 휴가가 이미 있으면 다시 넣지 마세요.`;
     else guide.textContent = '포상·위로 등은 받은 휴가증 한 건마다 따로 입력하면 기한을 놓치지 않습니다.';
     fill(out, ...[issueList(issues, { id: 'grant-issues' }), error ? h('p', { class: 'form-error', role: 'alert' }, error) : null].filter(Boolean));
   };
@@ -124,6 +131,9 @@ export function renderGrantForm(root, { grant, today, usage, initialKind, onSave
     out.querySelector('#grant-issues, .form-error')?.setAttribute('tabindex', '-1');
     out.querySelector('#grant-issues, .form-error')?.focus();
   } },
+  auto ? h('p', { class: `auto-note auto-note--${auto}`, 'data-testid': 'grant-auto-note' }, auto === 'managed'
+    ? '복무 정보의 진급일에 맞춰 자동으로 넣은 휴가입니다. 일수나 날짜를 고치면 연동을 멈춥니다. 만료 기한은 부대 기준이 확인되지 않아 비어 있습니다.'
+    : '자동으로 넣었지만 진급일 연동이 멈춘 휴가입니다. 날짜와 일수는 직접 관리하세요.') : null,
   h('div', { class: 'field' }, h('label', { for: 'g-kind' }, '종류'),
     h('select', { id: 'g-kind', onChange: (e) => {
       draft.kind = e.target.value;
@@ -154,7 +164,7 @@ export function renderGrantForm(root, { grant, today, usage, initialKind, onSave
     h('button', { type: 'button', class: 'btn btn--ghost', onClick: onClose }, '닫기')),
   isNew ? null : h('div', { class: 'quick-actions' },
     h('button', { type: 'button', class: 'btn btn--danger-quiet', onClick: () => {
-      if (!window.confirm(`'${grant.label}' 휴가를 삭제할까요?`)) return;
+      if (!window.confirm(`'${grant.label}' 휴가를 삭제할까요?${auto ? ' 지우면 복무 정보를 다시 저장해도 다시 넣지 않습니다.' : ''}`)) return;
       const r = onDelete(grant.id);
       if (!r.ok) { issues = r.issues ?? []; error = r.error ?? ''; refresh(); }
     } }, '이 휴가 삭제')));
