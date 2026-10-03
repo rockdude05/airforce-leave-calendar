@@ -1,6 +1,6 @@
 import { isDateOnly } from './dates.js';
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 export const RULE_VERSION = 'unit-user-2026-10-03';
 export const STORAGE_KEY = 'airforce-leave-calendar:v1';
 export const VISIT_PRINCIPLE_LIMIT = 7;
@@ -11,6 +11,13 @@ export const MERIT_POINTS_MAX = 999;
 export const MERIT_PER_DAY_MAX = 999;
 export const MERIT_CONVERT_MAX_DAYS = 30;
 export const MERIT_GRANT_LABEL = '포상 (가점 전환)';
+/** 일정 공유 (2026-10-03 사용자 결정): 받은 사람 수·코드 한 건의 일정 수·별명 길이·색 자리 수 */
+export const RECEIVED_LIMIT = 30;
+export const SHARE_ITEMS_LIMIT = 20;
+export const NICKNAME_LIMIT = 20;
+export const COLOR_SLOTS = 6;
+/** 내 공유 번호·상대 번호: 대문자·숫자 8자 (QR 알파뉴메릭 세그먼트에 맞춤) */
+export const SHARE_ID_RE = /^[0-9A-Z]{8}$/;
 
 /** @type {readonly string[]} */
 export const GRANT_KINDS = Object.freeze([
@@ -52,11 +59,21 @@ export function createEmptyState(today) {
     ruleVersion: RULE_VERSION,
     grants: [],
     trips: [],
-    settings: { visitBaselineCount: 0, visitBaselineAsOf: today },
+    settings: { visitBaselineCount: 0, visitBaselineAsOf: today, shareId: null, viewOnly: false },
     service: null,
     merit: emptyMerit(),
     promotionGrants: emptyPromotionGrants(),
+    received: [],
   };
+}
+
+const SHARE_ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+/** 내 공유 번호 8자. 처음 공유할 때 한 번 만들어 저장한다. */
+export function newShareId() {
+  const bytes = new Uint8Array(8);
+  if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  return Array.from(bytes, (b) => SHARE_ID_ALPHABET[b % SHARE_ID_ALPHABET.length]).join('');
 }
 
 /** 화면용 규칙 버전 이름: 'unit-user-2026-10-02.2' → '2026년 10월 2일 기준 (2차)'. 내부 값은 문의 양식에만 쓴다. */

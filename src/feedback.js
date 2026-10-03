@@ -2,7 +2,7 @@
 // 휴가 기록·이름·연락처는 이 모듈에서 전송하지 않는다 — 규칙 항목 이름, 문의 유형, 앱 버전, 규칙 버전만 담는다.
 import { APP_VERSION } from './version.js';
 import { RULE_VERSION } from './domain/model.js';
-import { h, fill } from './ui/dom.js';
+import { shareText, renderManualText } from './share-channel.js';
 
 /**
  * 구글 폼 설정. url이 비어 있으면 공유/복사로 대체한다.
@@ -84,7 +84,7 @@ export function buildShareText({ rule, type }, versions = {}) {
 /**
  * 규칙 문의 보내기.
  * 폼 주소가 있고 온라인이면 새 창으로 열고 'opened'. 폼이 없거나 오프라인이면
- * navigator.share -> 클립보드 -> 수동 순으로 대체한다 (spec 3.2).
+ * navigator.share -> 클립보드 -> 수동 순으로 대체한다 (spec 3.2) — share-channel.js의 공통 체인.
  * @param {{online?: boolean}} [opts] online은 테스트에서 주입할 수 있다. 기본값은 navigator.onLine.
  * @returns {Promise<'opened'|'shared'|'cancelled'|'copied'|'manual'>}
  */
@@ -95,40 +95,16 @@ export async function sendFeedback({ rule, type }, { online = navigator.onLine }
     window.open(url, '_blank', 'noopener');
     return 'opened';
   }
-  const text = buildShareText({ rule, type }, versions);
-  if (typeof navigator.share === 'function') {
-    try {
-      await navigator.share({ text });
-      return 'shared';
-    } catch (e) {
-      if (e?.name === 'AbortError') return 'cancelled';
-      // 공유 실패 — 클립보드로 대체
-    }
-  }
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return 'copied';
-    } catch {
-      // 클립보드 거부 — 수동 텍스트 상자로 대체
-    }
-  }
-  return 'manual';
+  return shareText(buildShareText({ rule, type }, versions));
 }
 
 /** 복사·공유가 모두 안 될 때 보여주는 선택 가능한 텍스트 상자 시트 */
 export function renderManualFeedback(root, { rule, type, onClose }) {
-  const text = buildShareText({ rule, type }, { appVersion: APP_VERSION, ruleVersion: RULE_VERSION });
-  const textarea = h('textarea', {
-    // 읽기 전용이라 키보드가 뜨지 않으므로 autofocus 허용 — 시트를 연 뒤(showModal) 이 칸에 초점이 간다
-    readonly: true, autofocus: true, rows: 7, class: 'feedback-manual-text', 'data-testid': 'feedback-manual-text',
-    onFocus: (e) => e.target.select(),
-  }, text);
-  fill(root,
-    h('header', { class: 'sheet__head' }, h('h2', null, '문의 내용'),
-      h('button', { type: 'button', class: 'icon-btn', 'aria-label': '닫기', onClick: onClose }, '✕')),
-    h('div', { class: 'sheet__body' },
-      h('p', { class: 'small' }, '자동으로 보내거나 복사하지 못했습니다. 아래 내용을 길게 눌러 복사한 뒤 메모·메시지로 보내 주세요.'),
-      textarea,
-      h('div', { class: 'sheet__actions' }, h('button', { type: 'button', class: 'btn btn--ghost', onClick: onClose }, '닫기'))));
+  renderManualText(root, {
+    title: '문의 내용',
+    note: '자동으로 보내거나 복사하지 못했습니다. 아래 내용을 길게 눌러 복사한 뒤 메모·메시지로 보내 주세요.',
+    text: buildShareText({ rule, type }, { appVersion: APP_VERSION, ruleVersion: RULE_VERSION }),
+    testId: 'feedback-manual-text',
+    onClose,
+  });
 }

@@ -749,3 +749,51 @@ legend { font-weight: 800; font-size: 15px; padding: 0; margin-bottom: 8px; }
 .sheet--fallback { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; box-shadow: 0 0 0 100vmax rgba(15, 31, 61, 0.55); }
 .sheet--over.sheet--fallback { z-index: 70; }
 body.has-fallback-sheet { overflow: hidden; }
+
+/* ---------------- 일정 공유 (1.4) ---------------- */
+.share-row { display: flex; gap: 10px; margin: 0 2px 10px; }
+.share-list { list-style: none; padding: 0; margin: 12px 0 8px; display: grid; gap: 8px; }
+.share-item { border: 1px solid var(--steel); border-radius: 6px; padding: 8px 10px; background: var(--card); }
+.share-item__pick { align-items: flex-start; }
+.share-item__text { display: flex; flex-direction: column; gap: 2px; }
+.share-item__dates { font-size: 14px; color: var(--slate); }
+.share-item__status { display: flex; gap: 16px; margin-top: 4px; padding-left: 32px; }
+.choice--inline { min-height: 36px; font-size: 14px; }
+.share-methods { display: grid; gap: 10px; margin: 12px 0; }
+.share-method { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; min-height: 56px; padding: 12px 14px; border: 1px solid var(--steel); border-radius: 6px; background: var(--card); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.share-method:active { background: #EEF2F7; }
+.share-method__title { font-size: 16px; }
+.share-method__desc { color: var(--slate); }
+.share-qr { display: flex; justify-content: center; padding: 8px; background: #fff; border: 1px solid var(--steel); border-radius: 6px; }
+.share-qr svg { width: min(100%, 320px); height: auto; display: block; }
+.share-preview { white-space: pre-wrap; word-break: keep-all; font: inherit; font-size: 15px; line-height: 1.5; margin: 10px 0; padding: 12px; background: #F4F6F9; border-radius: 6px; }
+.receive-text { width: 100%; box-sizing: border-box; font: inherit; font-size: 15px; padding: 10px; border: 1px solid var(--steel); border-radius: 6px; resize: vertical; }
+.receive-preview { margin: 8px 0 12px; }
+.receive-lines { margin: 6px 0 0; padding-left: 20px; font-size: 15px; line-height: 1.6; }
+.sheet__actions--stack { grid-template-columns: 1fr; }
+/* 받은 동기 일정 — 사람마다 색 자리 0~5 (CSP: style 속성 대신 클래스). 내 일정 색(청·teal·plum·slate)과 겹치지 않게 고른 팔레트 */
+.person-bar--c0 { --p: #C2410C; }
+.person-bar--c1 { --p: #B4236B; }
+.person-bar--c2 { --p: #0E7490; }
+.person-bar--c3 { --p: #4D7C0F; }
+.person-bar--c4 { --p: #A16207; }
+.person-bar--c5 { --p: #9F1239; }
+.day__people { display: flex; gap: 2px; margin-top: 3px; padding: 0 3px; align-items: center; }
+.person-bar { display: block; flex: 1 1 0; height: 4px; border-radius: 2px; background: var(--p); }
+.person-bar--more { flex: none; height: auto; font-size: 9px; font-weight: 700; line-height: 1; color: var(--slate); background: none; font-style: normal; }
+.day.is-out .person-bar { opacity: 0.55; }
+.swatch--people { background: linear-gradient(90deg, #C2410C 0 33%, #B4236B 33% 66%, #0E7490 66%); }
+.people-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; }
+.people-list li { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.person-dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--p); }
+.people-same-day { margin: 8px 0 0; color: var(--slate); }
+.received-list { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px; }
+.received { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--card); }
+.received__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.received__name { font-weight: 700; }
+.received__actions { margin: 8px 0 0; align-items: center; }
+.received__actions input { flex: 1 1 120px; min-height: 44px; font: inherit; padding: 6px 10px; border: 1px solid var(--steel); border-radius: 6px; }
+.tabs--two { grid-template-columns: repeat(2, 1fr); }
+.view-only-note { padding: 12px 14px; border-radius: 6px; background: var(--card); border: 1px solid var(--line); margin-bottom: 12px; }
+.view-only-note p { margin: 0 0 4px; }
+.view-only-switch { margin-bottom: 6px; }

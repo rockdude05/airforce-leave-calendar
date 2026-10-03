@@ -17,6 +17,12 @@ import { computeSchedule, validateService } from './domain/service.js';
 import { addDays } from './domain/dates.js';
 import { APP_VERSION } from './version.js';
 import { sendFeedback, renderManualFeedback } from './feedback.js';
+import { shareText, copyText, renderManualText } from './share-channel.js';
+import { encodeShare, buildShareLink, extractCode, decodeShare } from './domain/share-codec.js';
+import { familyText } from './domain/share-text.js';
+import { newShareId, tripDates } from './domain/model.js';
+import { classifyIncoming, applyIncoming, renameReceived, removeReceived } from './domain/received.js';
+import { shareableTrips, shareSelectionKey, renderSharePick, renderShareMethods, renderQrSheet, renderLinkNotice, renderFamilyPreview, renderReceiveInput, renderReceiveSheet, RECEIVE_ERRORS } from './ui/share.js';
 
 export { APP_VERSION };
 
@@ -34,6 +40,8 @@ let today = seoulToday();
 let state = null;
 let month = today.slice(0, 7);
 let selected = today;
+/** 링크(#s=코드)로 열렸을 때 받으려는 코드. 주소에서는 바로 지우고 메모리에만 둔다. 기록 복구 중에도 잃지 않는다. */
+let pendingShareCode = readShareHash();
 let view = viewFromHash();
 /** @type {{isDirty:()=>boolean}|null} */
 let sheetHandle = null;
@@ -55,7 +63,22 @@ let lastRaw = /** @type {string|null|undefined} */ (undefined);
 
 function viewFromHash() {
   const v = location.hash.replace('#', '');
+  if (v === 'grants' && viewOnly()) return 'calendar';
   return ['calendar', 'grants', 'settings'].includes(v) ? v : 'calendar';
+}
+
+/** 받은 일정만 보기(가족·지인용). 내 기록은 숨길 뿐 지우지 않는다. */
+function viewOnly() {
+  return state?.settings?.viewOnly === true;
+}
+
+/** 주소의 '#s=코드'를 읽고 주소에서 지운다(새로고침·뒤로 가기로 다시 뜨지 않게). 없으면 null. */
+function readShareHash() {
+  if (!location.hash.startsWith('#s=')) return null;
+  let raw = location.hash;
+  try { raw = decodeURIComponent(raw); } catch { /* 이상한 % 조합이면 원문 그대로 */ }
+  history.replaceState(null, '', '#calendar');
+  return extractCode(raw);
 }
 
 function toast(message, { error = false } = {}) {
@@ -67,11 +90,17 @@ function toast(message, { error = false } = {}) {
 
 /** 검증된 상태를 저장하고 성공 시에만 반영 */
 function commit(next, message) {
+  // 다른 창이 '받은 일정만 보기'를 켠 뒤에도 남아 있는 편집·공유 시트에서는 내 기록을 저장하지 않는다
+  if (viewOnly() && isOpen(sheet) && sheetKind === 'edit') {
+    const error = '받은 일정만 보기로 바뀌어 저장하지 않았습니다. 설정에서 모드를 끄면 다시 편집할 수 있습니다.';
+    toast(error, { error: true });
+    return { ok: false, error, conflict: false, reloaded: false };
+  }
   const r = saveState(storage, next, { expectedRaw: lastRaw });
   if (!r.ok) {
-    if (r.conflict) reloadFromStorage();
+    const reloaded = r.conflict ? reloadFromStorage() : false;
     toast(r.error, { error: true });
-    return { ok: false, error: r.error };
+    return { ok: false, error: r.error, conflict: Boolean(r.conflict), reloaded };
   }
   lastRaw = r.raw;
   state = next;
@@ -90,26 +119,44 @@ function download(filename, text, type = 'application/json') {
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
 }
 
-/** 다른 창(홈 화면 앱·브라우저 탭)이 바꾼 기록을 다시 읽는다. */
+/** 기록을 읽지 못했을 때의 마지막 결과. 복구 화면을 다시 그릴 때(예: 새 공유 링크 진입) 쓴다. */
+let lastLoadFailure = null;
+/** 마지막 다시 읽기에서 보기 전용 전환 때문에 편집 시트를 닫았는지 (storage 안내 문구 선택용) */
+let lastReloadClosedEdit = false;
+
+/** 다른 창(홈 화면 앱·브라우저 탭)이 바꾼 기록을 다시 읽는다. 쓸 수 있는 기록을 읽었으면 true. */
 function reloadFromStorage() {
   const result = loadState(storage, today);
   if (result.kind === 'ok' || result.kind === 'empty') {
     state = result.state;
     lastRaw = result.raw;
+    lastLoadFailure = null;
     tabs.hidden = false;
     // 열린 편집 시트는 옛 기록 기준이므로 닫지 않고 두되, 저장 시 다시 검증·비교된다.
+    // 단, 다른 창이 '받은 일정만 보기'를 켰으면 내 기록 편집·공유 시트는 닫는다.
+    lastReloadClosedEdit = false;
+    if (viewOnly() && isOpen(sheet) && sheetKind === 'edit') {
+      closeSheet(); // 작성 중이면 묻는다(닫히면 시트 번호가 올라가 늦은 공유 결과도 무시된다). 남겨 두면 commit이 저장을 막는다.
+      lastReloadClosedEdit = !isOpen(sheet);
+    }
     render();
-  } else if (result.kind === 'corrupt' || result.kind === 'future') {
+    return true;
+  }
+  if (result.kind === 'corrupt' || result.kind === 'future') {
+    lastLoadFailure = result;
     closeSheet({ force: true });
     renderRecovery(result);
   }
+  return false;
 }
 
 window.addEventListener('storage', (e) => {
   if (e.key !== null && e.key !== STORAGE_KEY) return;
   if (e.newValue === lastRaw) return;
   reloadFromStorage();
-  toast('다른 창에서 바뀐 기록을 불러왔습니다.');
+  toast(lastReloadClosedEdit ? '다른 창에서 받은 일정만 보기로 바꿔 편집 창을 닫았습니다.'
+    : viewOnly() && isOpen(sheet) && sheetKind === 'edit' ? '다른 창에서 받은 일정만 보기로 바꿨습니다. 이 창의 편집은 저장되지 않습니다. 설정에서 모드를 끄면 다시 편집할 수 있습니다.'
+    : '다른 창에서 바뀐 기록을 불러왔습니다.');
 });
 
 /* ---------------- 시트 ---------------- */
@@ -140,8 +187,18 @@ function fitSheetToViewport() {
 window.visualViewport?.addEventListener('resize', fitSheetToViewport);
 fitSheetToViewport();
 
-function openSheet(renderFn) {
+/** 열린 시트 종류: 'edit'(내 기록 편집·공유) | 'view'(받기·안내·복사 상자). 보기 전용으로 바뀌면 edit만 닫는다. */
+let sheetKind = null;
+/**
+ * 시트 일련번호. 열거나 닫을 때마다 올라간다. 공유·복사처럼 기다렸다 끝나는 작업은 시작할 때 번호를 적어 두고,
+ * 끝났을 때 번호가 다르면(그사이 사용자가 닫거나 다른 시트를 열었으면) 화면을 건드리지 않는다.
+ */
+let sheetSerial = 0;
+
+function openSheet(renderFn, { kind = 'edit' } = {}) {
+  sheetSerial += 1;
   sheet.replaceChildren();
+  sheetKind = kind;
   sheetHandle = renderFn(sheet) ?? null;
   showDialog(sheet);
   sheet.querySelector('.sheet__body')?.scrollTo?.(0, 0);
@@ -150,6 +207,7 @@ function openSheet(renderFn) {
 function closeSheet({ force = false } = {}) {
   if (!force && sheetHandle?.isDirty() && !window.confirm('저장하지 않은 내용을 버리고 닫을까요?')) return;
   sheetHandle = null;
+  sheetSerial += 1;
   hideDialog(sheet);
   sheet.replaceChildren();
 }
@@ -195,7 +253,7 @@ async function askRule(rule, type) {
  */
 function openManualFeedback(rule, type) {
   if (!isOpen(sheet)) {
-    openSheet((root) => { renderManualFeedback(root, { rule, type, onClose: () => closeSheet({ force: true }) }); return null; });
+    openSheet((root) => { renderManualFeedback(root, { rule, type, onClose: () => closeSheet({ force: true }) }); return null; }, { kind: 'view' });
     return;
   }
   const back = document.activeElement;
@@ -214,7 +272,192 @@ function openManualFeedback(rule, type) {
   showDialog(over);
 }
 
+/* ---------------- 일정 공유 ---------------- */
+
+/** 내 공유 번호가 없으면 만들어 저장한다. 저장에 실패하면 코드를 만들지 않는다(번호가 다음에 바뀌지 않게). */
+function ensureShareId() {
+  if (state.settings.shareId) return true;
+  const r = commit({ ...state, settings: { ...state.settings, shareId: newShareId() } });
+  return r.ok;
+}
+
+function setShareConfirmed(tripId, confirmed) {
+  const trips = state.trips.map((t) => (t.id === tripId ? { ...t, shareConfirmed: confirmed } : t));
+  return commit({ ...state, trips });
+}
+
+function openShare() {
+  if (isOpen(sheet) || viewOnly()) return;
+  openSheet((root) => renderSharePick(root, {
+    state, today, onToggleConfirmed: setShareConfirmed, onNext: openShareMethods, onClose: () => closeSheet({ force: true }),
+  }));
+}
+
+/** 지금 기록에서 고른 일정의 코드·링크·가족 문장을 만든다. 일정이 없어졌거나 날짜가 바뀌면 그때의 내용으로 만든다. */
+function buildShare(tripIds) {
+  const chosen = state.trips.filter((t) => tripIds.includes(t.id) && t.status !== 'cancelled' && t.segments.length);
+  if (!chosen.length) return { ok: false, error: '보낼 일정이 없습니다.' };
+  const items = chosen.map((t) => ({ ...tripDates(t), confirmed: t.shareConfirmed === true })).sort((a, b) => (a.start < b.start ? -1 : 1));
+  try {
+    const link = buildShareLink(encodeShare({ senderId: state.settings.shareId, issuedOn: today, items }), new URL('./', location.href).href);
+    return { ok: true, link, text: familyText(items, today), count: items.length, signature: JSON.stringify(items) };
+  } catch {
+    return { ok: false, error: '공유 코드를 만들지 못했습니다. 일정 날짜를 확인해 주세요.' };
+  }
+}
+
+/**
+ * 고른 일정으로 방법 시트를 연다. 코드는 저장하지 않고 보내기 직전마다 지금 기록에서 다시 만든다 —
+ * 그사이 다른 창이 일정을 바꿨으면 옛 코드를 보내지 않고 고르기로 돌아간다.
+ * @returns {{ok: boolean, error?: string}} 고르기 시트가 오류를 표시할 수 있게
+ */
+function openShareMethods(tripIds, pickedKey) {
+  const chosen = shareableTrips(state, today).filter((t) => tripIds.includes(t.id));
+  if (shareSelectionKey(chosen) !== pickedKey) {
+    closeSheet({ force: true });
+    toast('일정이 바뀌어 공유를 다시 시작합니다. 보낼 일정을 다시 골라 주세요.', { error: true });
+    openShare();
+    return { ok: false };
+  }
+  if (!ensureShareId()) return { ok: false, error: '공유 번호를 저장하지 못해 코드를 만들 수 없습니다. 잠시 뒤 다시 시도해 주세요.' };
+  const first = buildShare(tripIds);
+  if (!first.ok) return first;
+  const close = () => closeSheet({ force: true });
+  /** 보내기 직전 재생성. 내용이 바뀌었으면 null을 돌려주고 고르기로 되돌린다. */
+  const current = () => {
+    if (viewOnly()) { closeSheet({ force: true }); return null; }
+    const now = buildShare(tripIds);
+    if (now.ok && now.signature === first.signature) return now;
+    closeSheet({ force: true });
+    toast(now.ok ? '일정이 바뀌어 공유를 다시 시작합니다. 보낼 일정을 다시 골라 주세요.' : now.error, { error: true });
+    if (now.ok) openShare();
+    return null;
+  };
+  const methods = () => openSheet((root) => renderShareMethods(root, {
+    count: first.count,
+    onQr: () => { const now = current(); if (now) openSheet((r) => renderQrSheet(r, { link: now.link, onBack: methods, onClose: close })); },
+    onLink: () => openSheet((r) => renderLinkNotice(r, { onBack: methods, onClose: close,
+      onConfirm: () => {
+        const now = current();
+        if (!now) return;
+        const serial = sheetSerial;
+        shareText(now.link).then((result) => afterShare(serial, result, { text: now.link, title: '일정 링크', note: '자동으로 보내거나 복사하지 못했습니다. 아래 링크를 길게 눌러 복사해 보내 주세요.', copied: '링크를 복사했습니다. 메신저에 붙여넣어 보내 주세요.' }));
+      } })),
+    onFamily: () => { const now = current(); if (now) openSheet((r) => renderFamilyPreview(r, { text: now.text, onBack: methods, onClose: close,
+      onSend: () => {
+        const latest = current();
+        if (!latest) return;
+        const serial = sheetSerial;
+        shareText(latest.text).then((result) => afterShare(serial, result, { text: latest.text, title: '가족에게 보낼 글', note: '자동으로 보내거나 복사하지 못했습니다. 아래 글을 길게 눌러 복사해 보내 주세요.', copied: '글을 복사했습니다. 메신저에 붙여넣어 보내 주세요.' }));
+      } })); },
+    onClose: close,
+  }));
+  methods();
+  return { ok: true };
+}
+
+/* ---------------- 일정 받기 ---------------- */
+
+/** 붙여넣기 창. 오류가 있으면 입력을 보존한 채 이유를 보여 준다. 미뤄 둔 링크 코드가 있으면 미리 채운다. */
+function openReceiveInput(text = pendingShareCode ?? '', error = null) {
+  openSheet((root) => renderReceiveInput(root, {
+    text, error, onClose: () => closeSheet({ force: true }),
+    onSubmit: (value) => {
+      const code = extractCode(value);
+      const d = decodeShare(code);
+      if (!d.ok) { openReceiveInput(value, RECEIVE_ERRORS[d.reason]); return; }
+      openReceiveSheet(code, { payload: d.payload });
+    },
+  }), { kind: 'view' });
+}
+
+/** 내 기록이 없음 = 휴가·일정·복무 정보·가점이 모두 없음 (가족·지인 판별). 받은 일정이 있어도 내 기록이 없으면 보기 전용 후보다. */
+const isFirstRun = () => state && !state.grants.length && !state.trips.length && !state.service && state.merit.points === 0;
+
+/** 사용자가 확인한 판정 결과. 저장 직전 같은지 다시 본다. */
+const classificationKey = (c) => JSON.stringify({ kind: c.kind, nickname: c.entry?.nickname ?? null, issuedOn: c.entry?.issuedOn ?? null, items: c.entry?.items ?? null });
+
+/**
+ * 받기 시트. 코드 → payload → 판정 → 시트. 링크 진입·붙여넣기·재판정 모두 이 함수를 거친다.
+ * @param {string} code
+ * @param {{payload?: any, nickname?: string, viewOnly?: boolean, notice?: string|null}} [opts]
+ */
+function openReceiveSheet(code, { payload = null, nickname = '', viewOnly = false, notice = null } = {}) {
+  if (!state) return;
+  if (!payload) {
+    const d = decodeShare(code);
+    if (!d.ok) { openReceiveInput(code, RECEIVE_ERRORS[d.reason]); return; }
+    payload = d.payload;
+  }
+  const classification = classifyIncoming(state, payload);
+  const confirmedKey = classificationKey(classification);
+  // 이 시트의 코드만 버린다. 작성 중 새로 도착해 보류한 다른 링크는 다음 받기까지 보존한다.
+  const close = () => { closeSheet(); if (!isOpen(sheet) && pendingShareCode === code) pendingShareCode = null; };
+  openSheet((root) => renderReceiveSheet(root, {
+    payload, classification, nickname, viewOnly, install: installInfo(), firstRun: isFirstRun(), notice,
+    onClose: close,
+    onRetry: () => openReceiveInput(''),
+    onCopyForApp: async () => {
+      const serial = sheetSerial;
+      const r = await copyText(code);
+      if (serial !== sheetSerial) return r; // 기다리는 사이 사용자가 닫거나 다른 시트를 열었으면 건드리지 않는다
+      if (r === 'manual') openSheet((root2) => { renderManualText(root2, { title: '일정 코드', note: '복사하지 못했습니다. 아래 코드를 길게 눌러 복사한 뒤 홈 화면 앱의 달력 → 일정 받기에 붙여넣으세요.', text: code, testId: 'receive-manual-text', onClose: close }); return null; }, { kind: 'view' });
+      return r;
+    },
+    onSave: ({ nickname: name, viewOnly: v }) => saveReceived(code, payload, confirmedKey, { nickname: name, viewOnly: v }),
+  }), { kind: 'view' });
+}
+
+/** 저장 직전 재판정 → 적용 → commit. 다른 창이 그사이 바꿨으면 저장하지 않고 다시 묻는다. */
+function saveReceived(code, payload, confirmedKey, { nickname, viewOnly }) {
+  const again = () => openReceiveSheet(code, { payload, nickname, viewOnly, notice: '다른 창에서 받은 일정이 바뀌어 다시 확인합니다. 내용을 보고 다시 저장해 주세요.' });
+  const now = classifyIncoming(state, payload);
+  if (classificationKey(now) !== confirmedKey) { again(); return; }
+  if (now.kind !== 'new' && now.kind !== 'replace') { again(); return; }
+  let next = applyIncoming(state, payload, { nickname, today });
+  if (viewOnly) next = { ...next, settings: { ...next.settings, viewOnly: true } };
+  const r = commit(next);
+  if (!r.ok) {
+    // 충돌이면 commit이 최신 기록을 다시 읽었다. 쓸 수 있는 기록을 읽은 경우에만 다시 판정한다.
+    if (r.conflict && r.reloaded) again();
+    return;
+  }
+  const first = payload.items[0];
+  if (pendingShareCode === code) pendingShareCode = null;
+  closeSheet({ force: true });
+  month = first.start.slice(0, 7);
+  selected = first.start;
+  if (view !== 'calendar') setView('calendar'); else render();
+  toast(`${nickname.trim()}의 일정 ${payload.items.length}건을 받았습니다.`);
+}
+
+/** 복구·저장 불가 화면에서 받으려던 코드를 잃지 않게 복사 단추를 준다. */
+function pendingCodeButton() {
+  if (!pendingShareCode) return null;
+  const code = pendingShareCode;
+  return h('button', { type: 'button', class: 'btn btn--ghost', 'data-testid': 'recovery-copy-code', onClick: async () => {
+    const serial = sheetSerial;
+    const r = await copyText(code);
+    if (serial !== sheetSerial || pendingShareCode !== code) return;
+    if (r === 'copied') toast('받으려던 일정 코드를 복사했습니다. 기록을 복구한 뒤 달력 → 일정 받기에 붙여넣으세요.');
+    else openSheet((root) => { renderManualText(root, { title: '받으려던 일정 코드', note: '복사하지 못했습니다. 아래 코드를 길게 눌러 복사해 두세요.', text: code, testId: 'receive-manual-text', onClose: () => closeSheet({ force: true }) }); return null; }, { kind: 'view' });
+  } }, '받으려던 일정 코드 복사');
+}
+
+/** 공유 체인 결과 처리: 공유됨·복사됨은 닫고, 취소는 그대로, 수동은 복사 상자. 그사이 시트가 바뀌었으면 화면은 건드리지 않는다. */
+function afterShare(serial, result, { text, title, note, copied }) {
+  const live = serial === sheetSerial && isOpen(sheet) && sheetKind === 'edit' && !viewOnly();
+  if (result === 'copied') toast(copied);
+  if (!live) return;
+  if (result === 'shared' || result === 'copied') { closeSheet({ force: true }); return; }
+  if (result === 'manual') {
+    openSheet((root) => { renderManualText(root, { title, note, text, testId: 'share-manual-text', onClose: () => closeSheet({ force: true }) }); return null; });
+  }
+  // 'cancelled': 사용자가 공유 시트를 닫음 — 안내 없이 현재 화면 유지
+}
+
 function openTrip(id) {
+  if (viewOnly()) return;
   const trip = state.trips.find((t) => t.id === id) ?? null;
   const base = trip ? JSON.stringify(trip) : null;
   openSheet((root) => renderTripEditor(root, {
@@ -233,6 +476,7 @@ function openTrip(id) {
 }
 
 function addTrip(date) {
+  if (viewOnly()) return;
   if (!state.grants.length && date === undefined) { setView('grants'); return; }
   openSheet((root) => renderTripEditor(root, {
     state, today, trip: null, startDate: date ?? selected,
@@ -242,6 +486,7 @@ function addTrip(date) {
 
 /** 성과제 날짜에서 성과제외박 일정 초안을 연다. 휴가 일수는 차감하지 않는다. */
 function addPerformanceTrip({ n, start, days }) {
+  if (viewOnly()) return;
   if (!days) return;
   openSheet((root) => renderTripEditor(root, {
     state, today, trip: null,
@@ -277,6 +522,7 @@ function deleteTrip(id) {
 }
 
 function openGrant(id, { initialKind } = {}) {
+  if (viewOnly()) return;
   const grant = id ? state.grants.find((g) => g.id === id) : null;
   const base = grant ? JSON.stringify(grant) : null;
   openSheet((root) => renderGrantForm(root, {
@@ -311,9 +557,12 @@ function openGrant(id, { initialKind } = {}) {
 }
 
 function openVisits() {
+  if (viewOnly()) return;
   openSheet((root) => renderVisitForm(root, {
     settings: state.settings,
-    onSave: (settings) => {
+    onSave: (partial) => {
+      // 시트는 면회외출 두 값만 돌려준다. 공유 번호·보기 전용 같은 나머지 설정은 그대로 둔다.
+      const settings = { ...state.settings, ...partial };
       const issues = validateSettings(state, settings);
       if (issues.some((i) => i.severity === 'error')) return { ok: false, issues };
       const r = commit({ ...state, settings }, '면회외출 시작 횟수를 저장했습니다.');
@@ -329,6 +578,7 @@ function openVisits() {
  * 같은 가점이 두 번 휴가로 바뀌지 않게 한다(남은 가점이 같아도 휴가 목록이 달라지므로 둘 다 비교).
  */
 function openMerit() {
+  if (viewOnly()) return;
   const base = JSON.stringify([state.merit, state.grants]);
   openSheet((root) => renderMeritForm(root, {
     merit: state.merit,
@@ -417,6 +667,7 @@ function saveService(candidate, meta = {}, { keepDates = [] } = {}) {
 }
 
 function openService() {
+  if (viewOnly()) return;
   const base = JSON.stringify(state.service);
   openSheet((root) => renderServiceForm(root, {
     service: state.service, today,
@@ -457,7 +708,7 @@ async function importFile(file, { current = state, recovering = false } = {}) {
       return saved;
     },
     onClose: () => closeSheet({ force: true }),
-  }));
+  }), { kind: 'view' });
 }
 
 /* ---------------- 설치·업데이트 ---------------- */
@@ -547,7 +798,8 @@ function registerServiceWorker() {
 /* ---------------- 렌더 ---------------- */
 
 function setView(next) {
-  view = next;
+  view = next === 'grants' && viewOnly() ? 'calendar' : next;
+  next = view;
   if (location.hash !== `#${next}`) history.replaceState(null, '', `#${next}`);
   render();
   main.focus({ preventScroll: true });
@@ -556,7 +808,7 @@ function setView(next) {
 
 function openGuide() {
   if (isOpen(sheet)) return;
-  openSheet((root) => renderGuide(root, { onClose: () => closeSheet({ force: true }) }));
+  openSheet((root) => renderGuide(root, { onClose: () => closeSheet({ force: true }) }), { kind: 'view' });
 }
 document.getElementById('help-btn')?.addEventListener('click', openGuide);
 
@@ -564,7 +816,28 @@ tabs.addEventListener('click', (e) => {
   const btn = /** @type {HTMLElement} */ (e.target).closest('[data-view]');
   if (btn) setView(btn.dataset.view);
 });
-window.addEventListener('hashchange', () => { const v = viewFromHash(); if (v !== view) { view = v; render(); } });
+window.addEventListener('hashchange', () => {
+  if (location.hash.startsWith('#s=')) {
+    // 앱이 열린 채 다른 링크를 누른 경우
+    const code = readShareHash();
+    pendingShareCode = code;
+    if (!state) {
+      // 복구·저장 불가 화면: 복사 단추가 새 코드를 가리키도록 다시 그린다
+      if (lastLoadFailure) renderRecovery(lastLoadFailure);
+      return;
+    }
+    if (isOpen(sheet)) {
+      closeSheet(); // 작성 중이면 확인을 묻는다
+      if (isOpen(sheet)) { toast('작성 중인 내용이 있어 받기를 미뤘습니다. 닫은 뒤 달력의 "일정 받기"를 누르면 이어서 받을 수 있습니다.'); return; }
+    }
+    if (view !== 'calendar') { view = 'calendar'; render(); }
+    openReceiveSheet(code);
+    return;
+  }
+  if (location.hash === '#grants' && viewOnly()) history.replaceState(null, '', '#calendar'); // 보기 전용: 내 휴가 주소를 달력으로 되돌림
+  const v = viewFromHash();
+  if (v !== view) { view = v; render(); }
+});
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || !state) return;
   const now = seoulToday();
@@ -573,6 +846,12 @@ document.addEventListener('visibilitychange', () => {
 
 function render() {
   if (!state) return;
+  // 보기 전용 재보정: 처음 열 때·다른 창 반영·복원 뒤에도 내 휴가 화면에 머물지 않는다
+  const ro = viewOnly();
+  tabs.classList.toggle('tabs--two', ro);
+  const grantsTab = tabs.querySelector('[data-view="grants"]');
+  if (grantsTab) grantsTab.hidden = ro;
+  if (ro && view === 'grants') { view = 'calendar'; if (location.hash === '#grants') history.replaceState(null, '', '#calendar'); }
   for (const t of tabs.querySelectorAll('[data-view]')) {
     if (t.dataset.view === view) t.setAttribute('aria-current', 'page');
     else t.removeAttribute('aria-current');
@@ -590,7 +869,10 @@ function render() {
       onMonthChange: (m) => { month = m; if (!selected.startsWith(m)) selected = m === today.slice(0, 7) ? today : `${m}-01`; render(); },
       onOpenTrip: openTrip,
       onAddTrip: addTrip,
-      welcome: state.grants.length === 0 && state.trips.length === 0 ? { inApp: installInfo().inApp } : null,
+      onShare: ro ? null : openShare,
+      onReceive: () => openReceiveInput(),
+      viewOnly: ro,
+      welcome: !ro && state.grants.length === 0 && state.trips.length === 0 ? { inApp: installInfo().inApp } : null,
       onHelp: openGuide,
       onRestore: () => setView('settings'),
     });
@@ -608,6 +890,10 @@ function render() {
       offline: offlineState,
       update: { waiting: Boolean(waitingWorker) || controllerChanged, apply: applyUpdate },
       onAsk: askRule,
+      onRenameReceived: (senderId, nickname) => commit(renameReceived(state, senderId, nickname), '별명을 바꿨습니다.'),
+      onRemoveReceived: (senderId) => commit(removeReceived(state, senderId), '받은 일정을 지웠습니다.'),
+      viewOnly: ro,
+      onToggleViewOnly: (next) => commit({ ...state, settings: { ...state.settings, viewOnly: next } }, next ? '받은 일정만 보기로 바꿨습니다. 내 기록은 그대로 있습니다.' : '내 기록을 다시 보여 줍니다.'),
     });
   }
 }
@@ -630,7 +916,7 @@ function renderRecovery(result) {
       h('h1', { class: 'view-title' }, '저장된 기록을 열 수 없습니다'),
       h('p', { class: 'form-error', role: 'alert' }, '새 버전 앱이 저장한 기록입니다 — 앱을 업데이트해 주세요'),
       h('p', { class: 'small' }, '기록은 그대로 두었습니다. 앱을 새로 고치거나 업데이트한 뒤 다시 열어 주세요.'),
-      h('div', { class: 'btn-row' }, downloadRaw));
+      h('div', { class: 'btn-row' }, downloadRaw, pendingCodeButton()));
     return;
   }
   fill(main, 
@@ -639,7 +925,7 @@ function renderRecovery(result) {
     h('p', { class: 'small' }, '기록을 자동으로 지우지 않았습니다. 원본을 먼저 받아 두고, 백업 파일이 있으면 복원하세요.'),
     h('div', { class: 'btn-row' },
       downloadRaw,
-      h('label', { for: 'recover-file', class: 'btn btn--ghost', tabindex: '0' }, '백업에서 복원'), fileInput),
+      h('label', { for: 'recover-file', class: 'btn btn--ghost', tabindex: '0' }, '백업에서 복원'), fileInput, pendingCodeButton()),
     h('label', { class: 'choice choice--confirm' },
       h('input', { type: 'checkbox', onChange: (e) => { understood = e.target.checked; fresh.disabled = !understood; } }),
       h('span', null, '원본을 받아 두었고, 이 기기의 기록을 비우는 데 동의합니다')),
@@ -652,7 +938,7 @@ function renderUnavailable(result) {
     h('h1', { class: 'view-title' }, '이 브라우저에 기록을 저장할 수 없습니다'),
     h('p', { class: 'form-error', role: 'alert' }, result.error),
     h('p', { class: 'small' }, '개인정보 보호(시크릿) 모드나 앱 안 브라우저에서는 저장이 막힐 수 있습니다. 일반 Safari 또는 Chrome에서 다시 열어 주세요.'),
-    h('button', { type: 'button', class: 'btn btn--primary', onClick: () => location.reload() }, '다시 시도'));
+    h('div', { class: 'btn-row' }, h('button', { type: 'button', class: 'btn btn--primary', onClick: () => location.reload() }, '다시 시도'), pendingCodeButton()));
 }
 
 function boot() {
@@ -661,7 +947,9 @@ function boot() {
     state = result.state;
     lastRaw = result.raw;
     render();
+    if (pendingShareCode) openReceiveSheet(pendingShareCode);
   } else if (result.kind === 'corrupt' || result.kind === 'future') {
+    lastLoadFailure = result;
     renderRecovery(result);
   } else {
     renderUnavailable(result);

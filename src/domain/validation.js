@@ -2,6 +2,7 @@ import { compareDates, isDateOnly, addDays, koreanDate } from './dates.js';
 import {
   GRANT_KINDS, SEGMENT_KINDS, TRIP_STATUSES, TRANSPORT_ASSESSMENTS, SEGMENT_KIND_LABELS, VISIT_PRINCIPLE_LIMIT, OUTING_MONTHLY_LIMIT,
   MERIT_POINTS_MAX, MERIT_PER_DAY_MAX, PROMOTION_KINDS, PROMOTION_STATUSES,
+  RECEIVED_LIMIT, SHARE_ITEMS_LIMIT, NICKNAME_LIMIT, COLOR_SLOTS, SHARE_ID_RE,
 } from './model.js';
 import { validateService } from './service.js';
 import { allocationByGrant, grantWindow, inGrantWindow, isActiveTrip, visitCounts } from './balances.js';
@@ -77,11 +78,12 @@ function transportIssues(tr) {
   return out;
 }
 
-/** 일정 단독 구조 검사 (다른 일정·지급 건과 무관) */
-export function tripFieldIssues(t) {
+/** 일정 단독 구조 검사 (다른 일정·지급 건과 무관). version<5 기록에는 shareConfirmed가 없다. */
+export function tripFieldIssues(t, { version = 5 } = {}) {
   if (!t || typeof t !== 'object') return [err('TRIP_SHAPE', '일정 형식이 올바르지 않습니다.')];
   const out = [];
   if (!isId(t.id)) out.push(err('ID_INVALID', '일정 식별자가 올바르지 않습니다.'));
+  if (version >= 5 && typeof t.shareConfirmed !== 'boolean') out.push(err('TRIP_SHARE_FLAG', '일정의 확정 표시 값이 올바르지 않습니다.'));
   if (!isNonEmptyString(t.title, LIMITS.title)) out.push(err('TITLE_REQUIRED', `제목을 1~${LIMITS.title}자로 입력해 주세요.`, 'title'));
   if (!TRIP_STATUSES.includes(t.status)) out.push(err('TRIP_STATUS', '일정 상태가 올바르지 않습니다.'));
   out.push(...transportIssues(t.transport));
@@ -280,9 +282,15 @@ export function validateGrantDelete(state, id) {
 }
 
 /** 면회외출 시작 전 횟수 설정 */
-export function validateSettings(state, settings) {
+export function validateSettings(state, settings, { version = 5 } = {}) {
   const out = [];
   if (!settings || typeof settings !== 'object') return [err('SETTINGS_SHAPE', '설정 형식이 올바르지 않습니다.')];
+  if (version >= 5) {
+    if (settings.shareId !== null && !(typeof settings.shareId === 'string' && SHARE_ID_RE.test(settings.shareId))) {
+      out.push(err('SETTINGS_SHARE_ID', '공유 번호 형식이 올바르지 않습니다.', 'shareId'));
+    }
+    if (typeof settings.viewOnly !== 'boolean') out.push(err('SETTINGS_VIEW_ONLY', '보기 전용 설정 값이 올바르지 않습니다.', 'viewOnly'));
+  }
   if (!Number.isInteger(settings.visitBaselineCount) || settings.visitBaselineCount < 0 || settings.visitBaselineCount > VISIT_BASELINE_MAX) {
     out.push(err('VISIT_BASELINE_COUNT', `시작 전 면회외출 횟수는 0~${VISIT_BASELINE_MAX} 사이 정수여야 합니다.`, 'visitBaselineCount'));
   } else if (settings.visitBaselineCount > VISIT_PRINCIPLE_LIMIT) {
@@ -292,7 +300,9 @@ export function validateSettings(state, settings) {
   if (!isDateOnly(settings.visitBaselineAsOf)) {
     out.push(err('VISIT_BASELINE_DATE', '기준일을 선택해 주세요.', 'visitBaselineAsOf'));
   } else {
-    const early = state.trips.some((t) => isActiveTrip(t) && t.segments.some((s) => s.kind === 'visit' && compareDates(s.start, settings.visitBaselineAsOf) < 0));
+    // 손상된 기록(일정 자리에 null 등)도 예외 없이 지나가야 복구 화면에 닿는다 — 형식이 깨진 일정은 건너뛴다
+    const early = (Array.isArray(state.trips) ? state.trips : []).some((t) => t && typeof t === 'object' && Array.isArray(t.segments) && isActiveTrip(t)
+      && t.segments.some((s) => s && typeof s === 'object' && s.kind === 'visit' && isDateOnly(s.start) && compareDates(s.start, settings.visitBaselineAsOf) < 0));
     if (early) out.push(err('VISIT_BEFORE_BASELINE', '기준일 이전 날짜의 면회외출 기록이 있습니다. 기준일을 그보다 앞당기거나 해당 기록을 취소·정리해 주세요.', 'visitBaselineAsOf'));
   }
   return out;
@@ -361,6 +371,7 @@ const STATE_KEYS_BY_VERSION = {
   2: ['schemaVersion', 'ruleVersion', 'grants', 'trips', 'settings', 'service'],
   3: ['schemaVersion', 'ruleVersion', 'grants', 'trips', 'settings', 'service', 'merit'],
   4: ['schemaVersion', 'ruleVersion', 'grants', 'trips', 'settings', 'service', 'merit', 'promotionGrants'],
+  5: ['schemaVersion', 'ruleVersion', 'grants', 'trips', 'settings', 'service', 'merit', 'promotionGrants', 'received'],
 };
 
 const KEYS = {
@@ -369,7 +380,54 @@ const KEYS = {
   segment: ['id', 'kind', 'start', 'end', 'grantId'],
   transport: ['assessment', 'issued', 'validFrom', 'validTo', 'note'],
   settings: ['visitBaselineCount', 'visitBaselineAsOf'],
+  received: ['senderId', 'nickname', 'color', 'receivedOn', 'issuedOn', 'items'],
+  receivedItem: ['start', 'end', 'confirmed'],
 };
+/** 5판부터 일정에 shareConfirmed, 설정에 shareId·viewOnly가 있다. 이전 판 원본은 그 판의 키로 검증한다. */
+const tripKeys = (version) => (version >= 5 ? [...KEYS.trip, 'shareConfirmed'] : KEYS.trip);
+const settingsKeys = (version) => (version >= 5 ? [...KEYS.settings, 'shareId', 'viewOnly'] : KEYS.settings);
+
+/* ---------------- 받은 일정 (5판) ---------------- */
+
+/**
+ * 받은 일정 목록 검사. 잔여·겹침 계산과 무관한 표시용 기록이라 구조·한도만 본다.
+ * @param {unknown} received
+ * @param {{shareId?: string|null}} settings
+ * @returns {Issue[]}
+ */
+export function validateReceived(received, settings) {
+  if (!Array.isArray(received)) return [err('RECEIVED_SHAPE', '받은 일정 형식이 올바르지 않습니다.')];
+  const out = [];
+  if (received.length > RECEIVED_LIMIT) out.push(err('RECEIVED_LIMIT', `받은 일정은 ${RECEIVED_LIMIT}명까지 보관할 수 있습니다.`));
+  const seen = new Set();
+  for (const e of received) {
+    if (!exactKeys(e, KEYS.received) || !Array.isArray(e.items) || !e.items.every((it) => exactKeys(it, KEYS.receivedItem))) {
+      out.push(err('RECEIVED_SHAPE', '받은 일정 형식이 올바르지 않습니다.'));
+      continue;
+    }
+    if (typeof e.senderId !== 'string' || !SHARE_ID_RE.test(e.senderId)) out.push(err('RECEIVED_SENDER', '받은 일정의 상대 번호가 올바르지 않습니다.'));
+    else {
+      if (settings?.shareId && e.senderId === settings.shareId) out.push(err('RECEIVED_SELF', '내 번호로 받은 일정이 들어 있습니다.'));
+      if (seen.has(e.senderId)) out.push(err('DUPLICATE_ID', '같은 사람의 일정이 두 번 들어 있습니다.'));
+      seen.add(e.senderId);
+    }
+    if (!isNonEmptyString(e.nickname, NICKNAME_LIMIT)) out.push(err('RECEIVED_NICKNAME', `별명을 1~${NICKNAME_LIMIT}자로 입력해 주세요.`, 'nickname'));
+    if (!Number.isInteger(e.color) || e.color < 0 || e.color >= COLOR_SLOTS) out.push(err('RECEIVED_COLOR', '받은 일정의 색 값이 올바르지 않습니다.'));
+    if (!isDateOnly(e.receivedOn) || !isDateOnly(e.issuedOn)) out.push(err('RECEIVED_DATE', '받은 일정의 날짜가 올바르지 않습니다.'));
+    if (e.items.length < 1 || e.items.length > SHARE_ITEMS_LIMIT) {
+      out.push(err('RECEIVED_ITEMS', `받은 일정은 한 사람당 1~${SHARE_ITEMS_LIMIT}건이어야 합니다.`));
+      continue;
+    }
+    let bad = false;
+    for (let i = 0; i < e.items.length; i += 1) {
+      const it = e.items[i];
+      if (!isDateOnly(it.start) || !isDateOnly(it.end) || typeof it.confirmed !== 'boolean' || compareDates(it.start, it.end) > 0) { bad = true; break; }
+      if (i > 0 && compareDates(e.items[i - 1].end, it.start) >= 0) { bad = true; break; }
+    }
+    if (bad) out.push(err('RECEIVED_ITEMS', '받은 일정의 날짜 구간이 올바르지 않습니다.'));
+  }
+  return out;
+}
 
 function exactKeys(obj, keys) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
@@ -379,19 +437,19 @@ function exactKeys(obj, keys) {
 
 /**
  * 외부 입력(unknown)을 전체 상태로 검증한다. error가 하나라도 있으면 사용하지 않는다.
- * version은 검증할 기록 판(1·2·3·4). 이행기는 1판 원본을 1판 규칙으로 먼저 검증한다.
+ * version은 검증할 기록 판(1~5). 이행기는 1판 원본을 1판 규칙으로 먼저 검증한다.
  * @param {unknown} input
- * @param {{version?: 1|2|3|4}} [opts]
+ * @param {{version?: 1|2|3|4|5}} [opts]
  * @returns {Issue[]}
  */
-export function validateState(input, { version = 4 } = {}) {
+export function validateState(input, { version = 5 } = {}) {
   const stateKeys = STATE_KEYS_BY_VERSION[version];
   if (!stateKeys) throw new RangeError(`unsupported validation version: ${String(version)}`);
   if (!exactKeys(input, stateKeys)) return [err('STATE_SHAPE', '앱 기록 형식이 아닙니다.')];
   const s = /** @type {any} */ (input);
   if (s.schemaVersion !== version) return [err('SCHEMA_VERSION', '지원하지 않는 기록 버전입니다.')];
   if (typeof s.ruleVersion !== 'string' || s.ruleVersion.length > LIMITS.id) return [err('STATE_SHAPE', '규칙 버전 형식이 올바르지 않습니다.')];
-  if (!Array.isArray(s.grants) || !Array.isArray(s.trips) || !exactKeys(s.settings, KEYS.settings)) {
+  if (!Array.isArray(s.grants) || !Array.isArray(s.trips) || !exactKeys(s.settings, settingsKeys(version))) {
     return [err('STATE_SHAPE', '앱 기록 형식이 아닙니다.')];
   }
 
@@ -406,12 +464,12 @@ export function validateState(input, { version = 4 } = {}) {
   const tripIds = new Set();
   const segIds = new Set();
   for (const t of s.trips) {
-    if (!exactKeys(t, KEYS.trip) || !Array.isArray(t.segments) || !exactKeys(t.transport, KEYS.transport)
+    if (!exactKeys(t, tripKeys(version)) || !Array.isArray(t.segments) || !exactKeys(t.transport, KEYS.transport)
       || !t.segments.every((seg) => exactKeys(seg, KEYS.segment))) {
       out.push(err('TRIP_SHAPE', '일정 형식이 올바르지 않습니다.'));
       continue;
     }
-    out.push(...tripFieldIssues(t));
+    out.push(...tripFieldIssues(t, { version }));
     if (tripIds.has(t.id)) out.push(err('DUPLICATE_ID', '같은 일정이 두 번 들어 있습니다.'));
     tripIds.add(t.id);
     for (const seg of t.segments) {
@@ -422,7 +480,8 @@ export function validateState(input, { version = 4 } = {}) {
       if (seg.kind === 'leave' && !grantIds.has(seg.grantId)) out.push(err('GRANT_MISSING', `없는 휴가를 참조하는 일정이 있습니다${typeof t.title === 'string' && t.title ? `: ${t.title}` : ''}`));
     }
   }
-  out.push(...validateSettings(s, s.settings));
+  out.push(...validateSettings(s, s.settings, { version }));
+  if (version >= 5) out.push(...validateReceived(s.received, s.settings));
   if (version >= 2) out.push(...validateService(s.service));
   if (version >= 3) out.push(...validateMerit(s.merit));
   if (version >= 4 && Array.isArray(s.grants)) out.push(...validatePromotionGrants(s.promotionGrants, s.grants));

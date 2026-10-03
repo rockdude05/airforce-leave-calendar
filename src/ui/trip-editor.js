@@ -167,7 +167,7 @@ export function renderTripEditor(root, opts) {
   }
 
   function normalized() {
-    return { ...draft, title: draft.title.trim() };
+    return { ...draft, title: draft.title.trim(), shareConfirmed: draft.shareConfirmed ?? false };
   }
 
   function update(keepQuick = false) {
@@ -296,6 +296,7 @@ function newTrip(state, today, start) {
     status: 'planned',
     segments: [{ id: newId('s'), kind: 'leave', start, end: start, grantId: defaultGrantId(state, start) }],
     transport: emptyTransport(),
+    shareConfirmed: false,
   };
 }
 
@@ -307,5 +308,6 @@ function tripFromDraft(d) {
     status: 'planned',
     segments: [{ id: newId('s'), kind: d.kind, start: d.start, end: d.end, grantId: d.grantId ?? null }],
     transport: emptyTransport(),
+    shareConfirmed: false,
   };
 }

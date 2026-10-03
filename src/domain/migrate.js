@@ -5,8 +5,8 @@ import { validateState } from './validation.js';
 const hasErrors = (issues) => issues.some((i) => i.severity === 'error');
 
 /**
- * 원본 판 규칙으로 검증 → 1→2 → 2→3 → 3→4 → 규칙 이행 → 최신 판 검증. 상위 판은 future로 구별한다.
- * 2→3은 merit만, 3→4는 promotionGrants만 더하고 ruleVersion은 건드리지 않는다(규칙 이행이 예전 규칙 버전을 보고 판단하므로).
+ * 원본 판 규칙으로 검증 → 1→2 → 2→3 → 3→4 → 4→5 → 규칙 이행 → 최신 판 검증. 상위 판은 future로 구별한다.
+ * 2→3은 merit만, 3→4는 promotionGrants만, 4→5는 공유 필드(일정 shareConfirmed·received·설정 shareId·viewOnly)만 더하고 ruleVersion은 건드리지 않는다(규칙 이행이 예전 규칙 버전을 보고 판단하므로).
  * 이행에서는 정기휴가를 자동으로 넣지 않는다(복무 정보 저장 때만).
  * 메모리에서만 바꾸고 저장하지 않는다. fromVersion은 원본 판.
  * @param {unknown} input
@@ -21,13 +21,20 @@ export function migrateState(input) {
       issues: [{ code: 'SCHEMA_FUTURE', severity: 'error', message: '새 버전 앱이 저장한 기록입니다 — 앱을 업데이트해 주세요' }],
     };
   }
-  const fromVersion = version === 1 || version === 2 || version === 3 ? version : SCHEMA_VERSION;
+  const fromVersion = version === 1 || version === 2 || version === 3 || version === 4 ? version : SCHEMA_VERSION;
   const sourceIssues = validateState(input, { version: fromVersion });
   if (hasErrors(sourceIssues)) return { ok: false, issues: sourceIssues };
   let next = /** @type {any} */ (input);
   if (fromVersion === 1) next = { ...next, schemaVersion: 2, ruleVersion: RULE_VERSION, service: null };
   if (fromVersion <= 2) next = { ...next, schemaVersion: 3, merit: emptyMerit() };
   if (fromVersion <= 3) next = { ...next, schemaVersion: 4, promotionGrants: emptyPromotionGrants() };
+  if (fromVersion <= 4) {
+    next = {
+      ...next, schemaVersion: 5, received: [],
+      settings: { ...next.settings, shareId: null, viewOnly: false },
+      trips: next.trips.map((t) => ({ ...t, shareConfirmed: false })),
+    };
+  }
   next = migrateRules(next);
   if (next === input) return { ok: true, state: input, migrated: false, fromVersion, issues: sourceIssues };
   const issues = validateState(next);

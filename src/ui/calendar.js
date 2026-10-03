@@ -2,7 +2,12 @@ import { h, fill, formatDate, formatRange, shortDate, weekdayName } from './dom.
 import { monthGrid, weekday, compareDates, inclusiveDays, shiftMonth, addDays } from '../domain/dates.js';
 import { SEGMENT_KIND_LABELS, TRIP_STATUS_LABELS } from '../domain/model.js';
 import { isActiveTrip } from '../domain/balances.js';
+import { receivedByDate } from '../domain/received.js';
+import { statusLabel } from '../domain/share-text.js';
 import { serviceMarks } from './service.js';
+
+/** 받은 사람 수가 많을 때 칸에 보이는 막대 수 */
+const PEOPLE_BARS_MAX = 3;
 
 const KIND_MARK = { leave: '휴', performance: '성', outing: '외', visit: '면' };
 /** 좁은 달력 칸에 들어가는 짧은 이름 (글자 중간에서 잘리지 않게) */
@@ -72,10 +77,13 @@ function pass({ state, balances, today, onOpenTrip, onAddTrip }) {
  */
 export function renderCalendar(root, opts) {
   const { month, state, today, selected } = opts;
+  const viewOnly = opts.viewOnly === true;
   const cells = monthGrid(month);
-  const byDate = segmentsByDate(state.trips, cells);
+  // 보기 전용: 내 일정 막대·복무 표식·출타증·안내를 그리지 않는다(기록은 보존). 받은 일정만 남는다.
+  const byDate = viewOnly ? new Map() : segmentsByDate(state.trips, cells);
+  const people = receivedByDate(state.received ?? [], cells.map((c) => c.date));
   const grantById = new Map(state.grants.map((g) => [g.id, g]));
-  const marks = serviceMarks(opts.schedule ?? null);
+  const marks = viewOnly ? new Map() : serviceMarks(opts.schedule ?? null);
   const [y, m] = month.split('-').map(Number);
 
   const head = h('div', { class: 'cal-head' },
@@ -117,47 +125,89 @@ export function renderCalendar(root, opts) {
       if (c.date === today) labelParts.push('오늘');
       const dayMarks = marks.get(c.date) ?? [];
       for (const mk of dayMarks) labelParts.push(mk.label);
+      const who = people.get(c.date) ?? [];
+      for (const { entry, item } of who) labelParts.push(`${entry.nickname} ${statusLabel(item.confirmed)}`);
       row.append(h('button', {
         type: 'button', role: 'gridcell', class: classes.join(' '), 'data-date': c.date,
         'aria-selected': c.date === selected ? 'true' : 'false', 'aria-label': labelParts.join(', '),
         onClick: () => opts.onSelectDate(c.date),
       }, h('span', { class: 'day__marks', 'aria-hidden': 'true' },
         dayMarks.map((mk) => h('b', { class: `svc-mark svc-mark--${mk.kind}`, 'data-testid': 'service-mark' }, mk.mark))),
-      h('span', { class: 'day__num' }, String(Number(c.date.slice(8)))), h('span', { class: 'day__bars' }, bars)));
+      h('span', { class: 'day__num' }, String(Number(c.date.slice(8)))), h('span', { class: 'day__bars' }, bars), peopleBars(who)));
     }
     grid.append(row);
   }
 
   fill(root,
-    pass(opts),
+    viewOnly ? viewOnlyNote(state) : pass(opts),
     opts.welcome ? welcome(opts) : null,
-    h('section', { class: 'cal-wrap', 'aria-label': '월간 달력' }, head, grid, legend(Boolean(opts.schedule))),
-    dayDetail(opts, grantById, marks.get(selected) ?? []),
+    h('section', { class: 'cal-wrap', 'aria-label': '월간 달력' }, head, shareRow(opts), grid, legend(Boolean(opts.schedule) && !viewOnly, (state.received ?? []).length > 0, viewOnly)),
+    dayDetail(opts, grantById, marks.get(selected) ?? [], people.get(selected) ?? [], byDate.get(selected) ?? []),
   );
+}
+
+/** 일정 공유·받기 입구. 공유는 내 일정이 있어야 의미가 있으므로 onShare가 없으면(보기 전용) 받기만 보인다. */
+function shareRow({ onShare, onReceive }) {
+  if (!onShare && !onReceive) return null;
+  return h('div', { class: 'share-row' },
+    onShare ? h('button', { type: 'button', class: 'btn btn--small btn--ghost', 'data-testid': 'open-share', onClick: onShare }, '일정 공유') : null,
+    onReceive ? h('button', { type: 'button', class: 'btn btn--small btn--ghost', 'data-testid': 'open-receive', onClick: onReceive }, '일정 받기') : null);
 }
 
 function shortGrant(g) {
   return { reward: '포상', consolation: '위로', compensation: '보상', petition: '청원', other: '기타' }[g.kind] ?? '정기';
 }
 
-function legend(hasSchedule) {
+/** 칸 아래 사람별 가는 색 막대 (최대 3개 + 'n'). 색은 받을 때 정한 자리라 삭제해도 바뀌지 않는다. */
+function peopleBars(who) {
+  if (!who.length) return null;
+  const shown = who.slice(0, PEOPLE_BARS_MAX);
+  return h('span', { class: 'day__people', 'aria-hidden': 'true', 'data-testid': 'people-bars' },
+    shown.map(({ entry }) => h('i', { class: `person-bar person-bar--c${entry.color}` })),
+    who.length > PEOPLE_BARS_MAX ? h('i', { class: 'person-bar person-bar--more' }, `+${who.length - PEOPLE_BARS_MAX}`) : null);
+}
+
+/** 보기 전용 머리: 출타증 자리에 짧은 안내 */
+function viewOnlyNote(state) {
+  const n = (state.received ?? []).length;
+  return h('section', { class: 'view-only-note', 'data-testid': 'view-only-note', 'aria-label': '받은 일정만 보기' },
+    h('p', null, h('b', null, '받은 일정만 보기'), n ? ` · ${n}명의 일정을 받았습니다` : ' · 아직 받은 일정이 없습니다'),
+    h('p', { class: 'muted small' }, '바뀐 일정은 다시 받아야 합니다. 설정에서 이 모드를 끌 수 있습니다.'));
+}
+
+function legend(hasSchedule, hasPeople = false, viewOnly = false) {
+  if (viewOnly) return hasPeople ? h('p', { class: 'legend' }, h('span', { class: 'legend__item' }, h('i', { class: 'swatch swatch--people', 'aria-hidden': 'true' }), '받은 동기 일정 (사람마다 색)')) : null;
   return h('p', { class: 'legend' },
     h('span', { class: 'legend__item' }, h('i', { class: 'swatch swatch--planned', 'aria-hidden': 'true' }), '계획'),
     h('span', { class: 'legend__item' }, h('i', { class: 'swatch swatch--completed', 'aria-hidden': 'true' }), '사용완료'),
     h('span', { class: 'legend__item' }, '휴 휴가 · 성 성과제외박 · 외 외출 · 면 면회외출'),
-    hasSchedule ? h('span', { class: 'legend__item' }, '날짜 위: 진 진급 · 전 전역 · 성 성과제 생기는 날') : null);
+    hasSchedule ? h('span', { class: 'legend__item' }, '날짜 위: 진 진급 · 전 전역 · 성 성과제 생기는 날') : null,
+    hasPeople ? h('span', { class: 'legend__item' }, h('i', { class: 'swatch swatch--people', 'aria-hidden': 'true' }), '받은 동기 일정 (사람마다 색)') : null);
 }
 
-function dayDetail({ state, selected, schedule, onOpenTrip, onAddTrip, onPerformanceTrip }, grantById, dayMarks) {
-  const trips = state.trips.filter((t) => t.segments.some((s) => compareDates(selected, s.start) >= 0 && compareDates(selected, s.end) <= 0));
+function dayDetail({ state, selected, schedule, onOpenTrip, onAddTrip, onPerformanceTrip, viewOnly = false }, grantById, dayMarks, who = [], mine = []) {
+  const trips = viewOnly ? [] : state.trips.filter((t) => t.segments.some((s) => compareDates(selected, s.start) >= 0 && compareDates(selected, s.end) <= 0));
   trips.sort((a, b) => Number(isActiveTrip(b)) - Number(isActiveTrip(a)));
+  const outToo = mine.length && who.length ? who.map(({ entry }) => entry.nickname) : [];
+  let empty = null;
+  if (viewOnly) empty = who.length ? null : h('p', { class: 'muted', 'data-testid': 'view-only-empty' }, '받은 일정이 여기에 표시됩니다.');
+  else if (!trips.length) empty = h('p', { class: 'muted' }, who.length ? '이 날 내 일정은 없습니다.' : '이 날 일정이 없습니다.');
   return h('section', { class: 'day-detail', 'aria-labelledby': 'day-detail-title' },
     h('h2', { id: 'day-detail-title', class: 'section-title' }, formatDate(selected)),
-    serviceDetail(dayMarks, schedule, selected, onPerformanceTrip),
-    trips.length
-      ? h('ul', { class: 'trip-list' }, trips.map((t) => tripCard(t, grantById, onOpenTrip)))
-      : h('p', { class: 'muted' }, '이 날 일정이 없습니다.'),
-    h('button', { type: 'button', class: 'btn btn--primary btn--block', 'data-testid': 'add-trip', onClick: () => onAddTrip(selected) }, '이 날부터 일정 추가'));
+    viewOnly ? null : serviceDetail(dayMarks, schedule, selected, onPerformanceTrip),
+    trips.length ? h('ul', { class: 'trip-list' }, trips.map((t) => tripCard(t, grantById, onOpenTrip))) : empty,
+    peopleList(who),
+    outToo.length ? h('p', { class: 'small people-same-day', 'data-testid': 'people-same-day' }, `${outToo.join('·')}도 이 날 나갑니다.`) : null,
+    viewOnly ? null : h('button', { type: 'button', class: 'btn btn--primary btn--block', 'data-testid': 'add-trip', onClick: () => onAddTrip(selected) }, '이 날부터 일정 추가'));
+}
+
+/** 선택한 날에 나가는 받은 동기 목록: '별명 · 확정/계획'. 종류는 없다. */
+export function peopleList(who) {
+  if (!who.length) return null;
+  return h('ul', { class: 'people-list', 'data-testid': 'people-list', 'aria-label': '받은 동기 일정' },
+    who.map(({ entry, item }) => h('li', null,
+      h('i', { class: `person-dot person-bar--c${entry.color}`, 'aria-hidden': 'true' }),
+      h('span', null, `${entry.nickname} · ${statusLabel(item.confirmed)}`))));
 }
 
 export function tripCard(t, grantById, onOpenTrip) {
