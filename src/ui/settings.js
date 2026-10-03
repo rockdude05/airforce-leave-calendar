@@ -36,23 +36,30 @@ export function renderSettings(root, { state, today, onEditService, onExport, on
     h('section', { 'aria-labelledby': 'rules-title' },
       h('h2', { id: 'rules-title', class: 'section-title' }, '적용 규칙'),
       h('p', { class: 'muted small' }, `작근단 수송대대 병 기준 · 적용 규칙 ${ruleVersionLabel()}`),
-      h('h3', { class: 'sub-title' }, '앱이 계산하는 것'),
-      h('ul', { class: 'rules' }, ruleItems(RULE_TOPICS.calculated, onAsk)),
-      h('h3', { class: 'sub-title' }, '부대 확인이 필요해 판정하지 않는 것'),
-      h('ul', { class: 'rules rules--open' }, ruleItems(RULE_TOPICS.unconfirmed, onAsk, { emphasize: true }))),
+      h('h3', { class: 'sub-title rule-group__title' }, '앱이 계산하는 것',
+        h('span', { class: 'rule-group__count' }, `${RULE_TOPICS.calculated.length}`)),
+      h('ul', { class: 'rule-list' }, ruleItems(RULE_TOPICS.calculated, onAsk)),
+      h('h3', { class: 'sub-title rule-group__title' }, '부대 확인이 필요해 판정하지 않는 것',
+        h('span', { class: 'rule-group__badge' }, '확인 필요')),
+      h('p', { class: 'muted small rule-group__hint' }, '부대에서 들은 답이 있으면 문의로 알려 주세요. 확인되면 계산 규칙에 넣습니다.'),
+      h('ul', { class: 'rule-list rule-list--open' }, ruleItems(RULE_TOPICS.unconfirmed, onAsk, { open: true }))),
     h('section', { 'aria-labelledby': 'feedback-title' },
       h('h2', { id: 'feedback-title', class: 'section-title' }, '의견 보내기'),
-      h('p', { class: 'small' }, '위 규칙에 없는 내용이나 그 외 의견은 아래로 보내 주세요. 앱은 휴가 기록·이름·연락처를 보내지 않습니다. 군번·실명·작전 정보·실제 출타 일정은 적지 마세요.'),
-      h('button', { type: 'button', class: 'btn btn--ghost', 'data-testid': 'feedback-general',
-        onClick: () => onAsk?.('일반 의견', '기타') }, '일반 의견 보내기')),
+      h('div', { class: 'feedback-card' },
+        h('p', { class: 'small' }, '위 규칙에 없는 내용이나 그 외 의견은 여기로 보내 주세요.'),
+        h('p', { class: 'muted small feedback-card__note' }, '앱은 휴가 기록·이름·연락처를 보내지 않습니다. 군번·실명·작전 정보·실제 출타 일정은 적지 마세요.'),
+        h('button', { type: 'button', class: 'btn btn--primary btn--block', 'data-testid': 'feedback-general',
+          onClick: () => onAsk?.('일반 의견', '기타') }, '일반 의견 보내기'))),
     h('p', { class: 'muted small app-version' }, `출타 장부 ${appVersion} · 개인 기록은 서버로 전송되지 않습니다. 공식 휴가 승인·판정 도구가 아니며, 최종 판단은 부대 행정 기준을 따릅니다.`));
 }
 
-function ruleItems(topics, onAsk, { emphasize = false } = {}) {
-  return topics.map((text) => h('li', { class: emphasize ? 'rule--open' : null },
+/** 규칙 한 줄 = 표식 · 설명 · 문의 버튼. 버튼은 항목 첫 줄 오른쪽에 붙고 이름에 항목을 담는다. */
+function ruleItems(topics, onAsk, { open = false } = {}) {
+  return topics.map((text) => h('li', { class: 'rule-row' },
+    h('span', { class: `rule__mark${open ? ' rule__mark--open' : ''}`, 'aria-hidden': 'true' }, open ? '?' : ''),
     h('span', { class: 'rule__text' }, text),
-    h('button', { type: 'button', class: `btn btn--ghost btn--small rule__ask${emphasize ? ' rule__ask--emphasize' : ''}`,
-      onClick: () => onAsk?.(text, '질문') }, '문의하기')));
+    h('button', { type: 'button', class: 'rule__ask', 'aria-label': `문의하기: ${text}`, onClick: () => onAsk?.(text, '질문') },
+      h('span', { class: 'rule__pill' }, '문의', h('span', { class: 'rule__chev', 'aria-hidden': 'true' }, '›')))));
 }
 
 function installGuide(install) {
