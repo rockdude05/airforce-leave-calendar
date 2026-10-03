@@ -28,6 +28,12 @@ export function fill(el, ...children) {
   return el;
 }
 
+/** el.append과 같지만 null·false 자식은 건너뛴다 — 네이티브 append는 null을 "null" 글자로 넣는다. */
+export function add(el, ...children) {
+  append(el, children);
+  return el;
+}
+
 function append(el, children) {
   for (const child of children.flat(Infinity)) {
     if (child === null || child === undefined || child === false) continue;

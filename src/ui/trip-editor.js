@@ -1,4 +1,4 @@
-import { h, fill, formatDate, issueList, shortDate } from './dom.js';
+import { h, fill, add, formatDate, issueList, shortDate } from './dom.js';
 import { addDays, inclusiveDays, isDateOnly, compareDates } from '../domain/dates.js';
 import { SEGMENT_KIND_LABELS, TRIP_STATUS_LABELS, emptyTransport, newId } from '../domain/model.js';
 import { validateTrip, LIMITS, transportRule, TRANSPORT_RULE_TEXT } from '../domain/validation.js';
@@ -246,7 +246,7 @@ export function renderTripEditor(root, opts) {
       if (!r.ok) { saveError = r.error ?? '삭제하지 못했습니다.'; update(); }
     } }, '삭제')) : null;
 
-  form.append(
+  add(form,
     h('div', { class: 'field' },
       h('label', { for: 'trip-title' }, '제목'),
       h('input', { id: 'trip-title', type: 'text', value: draft.title, maxlength: LIMITS.title, placeholder: '예: 첫 정기휴가', autocomplete: 'off', onInput: (e) => { draft.title = e.target.value; update(); } })),
