@@ -11,7 +11,7 @@ const hasErrors = (issues) => issues.some((i) => i.severity === 'error');
 /**
  * @param {{getItem(k:string):string|null}} storage
  * @param {string} today
- * 읽는 도중에는 저장하지 않는다. 1판 기록은 메모리에서만 2판으로 바꾸고, raw는 실제 저장 원문 그대로 둔다.
+ * 읽는 도중에는 저장하지 않는다. 예전 판 기록은 메모리에서만 최신 판으로 바꾸고, raw는 실제 저장 원문 그대로 둔다.
  * @returns {{kind:'ok'|'empty'|'corrupt'|'future'|'unavailable', state?:any, raw?:string|null, migrated?:boolean, error?:string, issues?:any[]}}
  */
 export function loadState(storage, today) {
@@ -91,5 +91,5 @@ export function parseBackup(text) {
   const candidate = parsed && typeof parsed === 'object' && parsed.app === BACKUP_APP_ID && 'state' in parsed ? parsed.state : parsed;
   const m = migrateState(candidate);
   if (!m.ok) return m.future ? { ok: false, future: true, issues: m.issues } : { ok: false, issues: m.issues };
-  return { ok: true, state: m.state, migrated: m.migrated, issues: m.issues, exportedAt: typeof parsed.exportedAt === 'string' ? parsed.exportedAt : null };
+  return { ok: true, state: m.state, migrated: m.migrated, fromVersion: m.fromVersion, issues: m.issues, exportedAt: typeof parsed.exportedAt === 'string' ? parsed.exportedAt : null };
 }

@@ -75,7 +75,7 @@ function installGuide(install) {
 }
 
 /** 복원 확인 시트 */
-export function renderRestoreConfirm(root, { current, incoming, issues, exportedAt, onBackupCurrent, onConfirm, onClose }) {
+export function renderRestoreConfirm(root, { current, incoming, fromVersion, issues, exportedAt, onBackupCurrent, onConfirm, onClose }) {
   let understood = false;
   const errorBox = h('div', { class: 'issue-box' });
   const btn = h('button', { type: 'button', class: 'btn btn--danger', disabled: true, 'data-testid': 'confirm-restore', onClick: () => {
@@ -86,7 +86,7 @@ export function renderRestoreConfirm(root, { current, incoming, issues, exported
     }
   } }, '이 파일로 덮어쓰기');
   const lost = current.service && !incoming.service ? current.service : null;
-  const count = (s) => `휴가 ${s.grants.length}건 · 일정 ${s.trips.length}건 (취소 ${s.trips.filter((t) => t.status === 'cancelled').length}) · 면회외출 시작 ${s.settings.visitBaselineCount}회`;
+  const count = (s) => `휴가 ${s.grants.length}건 · 일정 ${s.trips.length}건 (취소 ${s.trips.filter((t) => t.status === 'cancelled').length}) · 면회외출 시작 ${s.settings.visitBaselineCount}회 · 가점 ${s.merit.points}점`;
   fill(root, 
     h('header', { class: 'sheet__head' }, h('h2', null, '백업에서 복원'),
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': '닫기', onClick: onClose }, '✕')),
@@ -97,6 +97,8 @@ export function renderRestoreConfirm(root, { current, incoming, issues, exported
       issues.length ? issueList(issues) : null,
       lost ? h('p', { class: 'issue issue--warning', 'data-testid': 'restore-service-warning' },
         `이 백업에는 복무 정보가 없어 지금 복무 정보(입대일 ${lost.enlistDate}, ${lost.performanceCycleWeeks}주 주기)가 지워집니다`) : null,
+      fromVersion < 3 ? h('p', { class: 'issue issue--warning', 'data-testid': 'restore-merit-warning' },
+        '이 백업에는 가점 정보가 없어 가점 0점·기준 없음으로 복원됩니다') : null,
       h('p', { class: 'small' }, '복원하면 지금 기록이 백업 파일 내용으로 바뀝니다. 먼저 지금 기록을 받아 두세요.'),
       h('button', { type: 'button', class: 'btn btn--ghost btn--block', onClick: onBackupCurrent }, '지금 기록 백업 받기'),
       h('label', { class: 'choice choice--confirm' },

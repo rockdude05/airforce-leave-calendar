@@ -1,13 +1,15 @@
 // 기록 판 이행. 저장소 읽기와 백업 읽기가 함께 쓴다. 순수 함수 — 저장하지 않는다.
-import { SCHEMA_VERSION, RULE_VERSION } from './model.js';
+import { SCHEMA_VERSION, RULE_VERSION, emptyMerit } from './model.js';
 import { validateState } from './validation.js';
 
 const hasErrors = (issues) => issues.some((i) => i.severity === 'error');
 
 /**
- * 1판 원본은 1판 규칙으로 검증 → 순수 변환 → 2판 검증. 상위 판은 future로 구별한다.
+ * 원본 판 규칙으로 검증 → 1→2 → 2→3 → 규칙 이행 → 3판 검증. 상위 판은 future로 구별한다.
+ * 2→3은 merit만 더하고 ruleVersion은 건드리지 않는다(규칙 이행이 예전 규칙 버전을 보고 판단하므로).
+ * 메모리에서만 바꾸고 저장하지 않는다. fromVersion은 원본 판.
  * @param {unknown} input
- * @returns {{ok:true, state:any, migrated:boolean, issues:any[]} | {ok:false, issues:any[], future?:boolean}}
+ * @returns {{ok:true, state:any, migrated:boolean, fromVersion:number, issues:any[]} | {ok:false, issues:any[], future?:boolean}}
  */
 export function migrateState(input) {
   const version = input && typeof input === 'object' && !Array.isArray(input) ? /** @type {any} */ (input).schemaVersion : undefined;
@@ -18,19 +20,17 @@ export function migrateState(input) {
       issues: [{ code: 'SCHEMA_FUTURE', severity: 'error', message: '새 버전 앱이 저장한 기록입니다 — 앱을 업데이트해 주세요' }],
     };
   }
-  if (version === 1) {
-    const v1Issues = validateState(input, { version: 1 });
-    if (hasErrors(v1Issues)) return { ok: false, issues: v1Issues };
-    const next = { ...(/** @type {any} */ (input)), schemaVersion: 2, ruleVersion: RULE_VERSION, service: null };
-    const issues = validateState(next, { version: 2 });
-    if (hasErrors(issues)) return { ok: false, issues };
-    return { ok: true, state: next, migrated: true, issues };
-  }
-  const issues = validateState(input, { version: 2 });
+  const fromVersion = version === 1 || version === 2 ? version : SCHEMA_VERSION;
+  const sourceIssues = validateState(input, { version: fromVersion });
+  if (hasErrors(sourceIssues)) return { ok: false, issues: sourceIssues };
+  let next = /** @type {any} */ (input);
+  if (fromVersion === 1) next = { ...next, schemaVersion: 2, ruleVersion: RULE_VERSION, service: null };
+  if (fromVersion <= 2) next = { ...next, schemaVersion: 3, merit: emptyMerit() };
+  next = migrateRules(next);
+  if (next === input) return { ok: true, state: input, migrated: false, fromVersion, issues: sourceIssues };
+  const issues = validateState(next);
   if (hasErrors(issues)) return { ok: false, issues };
-  const ruled = migrateRules(/** @type {any} */ (input));
-  if (ruled !== input) return { ok: true, state: ruled, migrated: true, issues: validateState(ruled, { version: 2 }) };
-  return { ok: true, state: input, migrated: false, issues };
+  return { ok: true, state: next, migrated: true, fromVersion, issues };
 }
 
 /**

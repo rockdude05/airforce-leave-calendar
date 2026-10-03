@@ -1,11 +1,16 @@
 import { isDateOnly } from './dates.js';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 export const RULE_VERSION = 'unit-user-2026-10-02.2';
 export const STORAGE_KEY = 'airforce-leave-calendar:v1';
 export const VISIT_PRINCIPLE_LIMIT = 7;
 /** 일반 외출: 한 달 2회, 남은 횟수는 다음 달로 넘어가지 않음 (2026-10-02 사용자 확인) */
 export const OUTING_MONTHLY_LIMIT = 2;
+/** 가점 → 포상휴가 1일 전환 (2026-10-02 사용자 결정: 기준 점수는 사용자가 입력, 바꾼 만큼 차감) */
+export const MERIT_POINTS_MAX = 999;
+export const MERIT_PER_DAY_MAX = 999;
+export const MERIT_CONVERT_MAX_DAYS = 30;
+export const MERIT_GRANT_LABEL = '포상 (가점 전환)';
 
 /** @type {readonly string[]} */
 export const GRANT_KINDS = Object.freeze([
@@ -49,7 +54,13 @@ export function createEmptyState(today) {
     trips: [],
     settings: { visitBaselineCount: 0, visitBaselineAsOf: today },
     service: null,
+    merit: emptyMerit(),
   };
+}
+
+/** 가점 없음·기준 없음 */
+export function emptyMerit() {
+  return { points: 0, pointsPerDay: null };
 }
 
 export function emptyTransport() {

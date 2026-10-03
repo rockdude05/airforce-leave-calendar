@@ -1,12 +1,13 @@
 // 컨트롤러: 모든 변경 후보를 검증하고, 저장에 성공한 뒤에만 화면 상태를 바꾼다.
 import { seoulToday } from './domain/dates.js';
-import { createEmptyState, STORAGE_KEY, RULE_VERSION } from './domain/model.js';
+import { createEmptyState, STORAGE_KEY, RULE_VERSION, newId } from './domain/model.js';
 import { calculateBalances } from './domain/balances.js';
 import { validateTrip, validateGrantChange, validateGrantDelete, validateSettings } from './domain/validation.js';
+import { convertMerit } from './domain/merit.js';
 import { loadState, saveState, serializeBackup, parseBackup, MAX_BACKUP_BYTES } from './storage.js';
 import { h, fill } from './ui/dom.js';
 import { renderCalendar } from './ui/calendar.js';
-import { renderGrants, renderGrantForm, renderVisitForm } from './ui/grants.js';
+import { renderGrants, renderGrantForm, renderVisitForm, renderMeritForm } from './ui/grants.js';
 import { renderTripEditor } from './ui/trip-editor.js';
 import { renderSettings, renderRestoreConfirm } from './ui/settings.js';
 import { renderGuide } from './ui/guide.js';
@@ -39,6 +40,8 @@ let importIssues = [];
 /** @type {ServiceWorker|null} */
 let waitingWorker = null;
 let updateRequested = false;
+/** 다른 창이 새 서비스 워커를 이미 켰다 — 이 창은 새로고침만 하면 새 버전이 된다 */
+let controllerChanged = false;
 /** @type {any} */
 let installPrompt = null;
 let persistAsked = false;
@@ -314,6 +317,29 @@ function openVisits() {
   }));
 }
 
+/**
+ * 가점 시트. 열 때의 가점·휴가 목록을 기준으로 고정한다 — 다른 창이 그사이 전환했으면 저장을 거부해
+ * 같은 가점이 두 번 휴가로 바뀌지 않게 한다(남은 가점이 같아도 휴가 목록이 달라지므로 둘 다 비교).
+ */
+function openMerit() {
+  const base = JSON.stringify([state.merit, state.grants]);
+  openSheet((root) => renderMeritForm(root, {
+    merit: state.merit,
+    onSave: (candidate) => {
+      if (JSON.stringify([state.merit, state.grants]) !== base) {
+        return { ok: false, error: '다른 화면에서 가점이나 휴가가 바뀌었습니다 — 닫고 다시 열어 주세요.' };
+      }
+      const r = convertMerit(candidate, { today, newId });
+      if (!r.ok) return { ok: false, issues: r.issues };
+      const saved = commit({ ...state, merit: r.merit, grants: [...state.grants, ...r.grants] },
+        r.days ? `포상휴가 ${r.days}일을 추가했습니다 (가점 ${r.used}점 사용)` : '가점을 저장했습니다.');
+      if (saved.ok) closeSheet({ force: true });
+      return saved;
+    },
+    onClose: () => closeSheet(),
+  }));
+}
+
 function scheduleOf(s = state) {
   return s?.service ? computeSchedule(s.service, today) : null;
 }
@@ -371,7 +397,7 @@ async function importFile(file, { current = state, recovering = false } = {}) {
   }
   importIssues = [];
   openSheet((root) => renderRestoreConfirm(root, {
-    current: current ?? createEmptyState(today), incoming: r.state, issues: r.issues, exportedAt: r.exportedAt,
+    current: current ?? createEmptyState(today), incoming: r.state, fromVersion: r.fromVersion, issues: r.issues, exportedAt: r.exportedAt,
     onBackupCurrent: () => (current ? exportBackup(current) : toast('지금 기록을 읽을 수 없어 위 원본 파일 받기를 사용하세요.', { error: true })),
     onConfirm: () => {
       const saved = commit(r.state, '백업에서 복원했습니다.');
@@ -409,21 +435,23 @@ function installInfo() {
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; if (view === 'settings' && state) render(); });
 
 function applyUpdate() {
-  if (!waitingWorker) return;
   if (isOpen(sheet) && sheetHandle?.isDirty()) {
     toast('작성 중인 내용을 저장하거나 닫은 뒤 새 버전을 적용해 주세요.', { error: true });
     return;
   }
+  // 대기 워커가 이미 다른 창에서 활성화됐으면 SKIP_WAITING은 효과가 없다 → 새로고침
+  if (controllerChanged || waitingWorker?.state === 'activated') { location.reload(); return; }
+  if (!waitingWorker) return;
   updateRequested = true;
   waitingWorker.postMessage({ type: 'SKIP_WAITING' });
 }
 
 function showUpdate(worker) {
-  waitingWorker = worker;
+  if (worker) waitingWorker = worker;
   const banner = document.getElementById('update-banner');
   fill(banner, 
-    h('span', null, '새 버전이 있습니다.'),
-    h('button', { type: 'button', class: 'btn btn--small btn--on-dark', 'data-testid': 'apply-update', onClick: applyUpdate }, '새로고침해 적용'));
+    h('span', null, controllerChanged ? '새 버전이 적용되었습니다.' : '새 버전이 있습니다.'),
+    h('button', { type: 'button', class: 'btn btn--small btn--on-dark', 'data-testid': 'apply-update', onClick: applyUpdate }, controllerChanged ? '새로고침' : '새로고침해 적용'));
   banner.hidden = false;
   if (view === 'settings' && state) render();
 }
@@ -452,9 +480,15 @@ function registerServiceWorker() {
     });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
   }).catch(() => setOffline('failed'));
+  // 처음 설치할 때(clients.claim)도 controllerchange가 온다 — 그때는 새 버전이 아니므로 무시한다.
+  let hadController = Boolean(navigator.serviceWorker.controller);
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     // 사용자가 '적용'을 누른 경우에만 다시 불러온다. 입력 중 강제 새로고침 없음.
-    if (updateRequested) location.reload();
+    if (updateRequested) { location.reload(); return; }
+    if (!hadController) { hadController = true; return; }
+    // 다른 창이 새 버전을 적용했다: 이 창은 옛 코드 그대로이니 새로고침을 안내한다
+    controllerChanged = true;
+    showUpdate(null);
   });
 }
 
@@ -510,7 +544,7 @@ function render() {
     });
   } else if (view === 'grants') {
     renderGrants(main, {
-      state, balances, today, schedule, onEditGrant: openGrant, onAddGrant: () => openGrant(null), onEditVisits: openVisits, onOpenTrip: openTrip,
+      state, balances, today, schedule, onEditGrant: openGrant, onAddGrant: () => openGrant(null), onEditVisits: openVisits, onEditMerit: openMerit, onOpenTrip: openTrip,
       onEditService: openService, onPromoGrant: (kind) => openGrant(null, { initialKind: kind }),
     });
   } else {
@@ -520,7 +554,7 @@ function render() {
       onImportFile: (f) => importFile(f),
       install: installInfo(),
       offline: offlineState,
-      update: { waiting: Boolean(waitingWorker), apply: applyUpdate },
+      update: { waiting: Boolean(waitingWorker) || controllerChanged, apply: applyUpdate },
       onAsk: askRule,
     });
   }

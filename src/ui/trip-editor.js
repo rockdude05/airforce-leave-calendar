@@ -47,15 +47,26 @@ export function renderTripEditor(root, opts) {
   function grantOptions(selected, seg) {
     const byGrant = balancesExcludingSelf();
     const date = isDateOnly(seg.start) ? seg.start : today;
+    // 이름이 같은 휴가(예: 가점 전환 포상 여러 건)는 기준일·순번으로 구별한다
+    const twinNo = new Map();
+    const byLabel = new Map();
+    for (const g of state.grants) byLabel.set(g.label, [...(byLabel.get(g.label) ?? []), g]);
+    for (const group of byLabel.values()) {
+      if (group.length < 2) continue;
+      [...group].sort((a, b) => a.balanceAsOf.localeCompare(b.balanceAsOf) || a.id.localeCompare(b.id))
+        .forEach((g, i) => twinNo.set(g.id, i + 1));
+    }
     return [
       h('option', { value: '' }, '휴가 선택'),
       ...sortForDate(state.grants, date).map((g) => {
         const b = byGrant[g.id];
+        const twin = twinNo.get(g.id);
         let note = '';
         if (compareDates(date, b.windowStart) < 0) note = ` · ${shortDate(b.windowStart)}부터 사용`;
         else if (b.windowEnd && compareDates(date, b.windowEnd) > 0) note = ' · 이 날짜엔 만료';
         else if (b.windowEnd) note = ` · ${shortDate(b.windowEnd)}까지`;
-        return h('option', { value: g.id, selected: g.id === selected }, `${g.label} (계획 후 ${b.afterPlans}일${note})`);
+        const name = twin ? `${g.label} ${twin} · ${shortDate(g.balanceAsOf)} 기준` : g.label;
+        return h('option', { value: g.id, selected: g.id === selected }, `${name} (계획 후 ${b.afterPlans}일${note})`);
       }),
     ];
   }

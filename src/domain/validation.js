@@ -1,6 +1,7 @@
 import { compareDates, isDateOnly, addDays } from './dates.js';
 import {
   GRANT_KINDS, SEGMENT_KINDS, TRIP_STATUSES, TRANSPORT_ASSESSMENTS, SEGMENT_KIND_LABELS, VISIT_PRINCIPLE_LIMIT, OUTING_MONTHLY_LIMIT,
+  MERIT_POINTS_MAX, MERIT_PER_DAY_MAX,
 } from './model.js';
 import { validateService } from './service.js';
 import { allocationByGrant, grantWindow, inGrantWindow, isActiveTrip, visitCounts } from './balances.js';
@@ -298,11 +299,35 @@ export function validateSettings(state, settings) {
 }
 
 
+/* ---------------- 가점 ---------------- */
+
+/**
+ * 가점 형식·범위. stored=true(저장된 상태)면 기준이 있을 때 남은 가점이 기준보다 작아야 한다 — 바꿀 수 있는 가점은 저장 전에 전환된다.
+ * 가점 시트의 입력 후보는 stored=false로 범위만 본다.
+ * @returns {Issue[]}
+ */
+export function validateMerit(merit, { stored = true } = {}) {
+  if (!exactKeys(merit, ['points', 'pointsPerDay'])) return [err('MERIT_SHAPE', '가점 형식이 올바르지 않습니다.')];
+  const out = [];
+  const { points, pointsPerDay } = merit;
+  if (!Number.isInteger(points) || points < 0 || points > MERIT_POINTS_MAX) {
+    out.push(err('MERIT_POINTS', `가점은 0~${MERIT_POINTS_MAX} 사이의 정수여야 합니다.`, 'points'));
+  }
+  if (pointsPerDay !== null && (!Number.isInteger(pointsPerDay) || pointsPerDay < 1 || pointsPerDay > MERIT_PER_DAY_MAX)) {
+    out.push(err('MERIT_PER_DAY', `포상휴가 1일당 가점은 1~${MERIT_PER_DAY_MAX} 사이의 정수이거나 비워 두어야 합니다.`, 'pointsPerDay'));
+  }
+  if (stored && out.length === 0 && pointsPerDay !== null && points >= pointsPerDay) {
+    out.push(err('MERIT_UNCONVERTED', '아직 휴가로 바꾸지 않은 가점이 기준 이상입니다.', 'points'));
+  }
+  return out;
+}
+
 /* ---------------- 전체 상태 (저장·복원) ---------------- */
 
 const STATE_KEYS_BY_VERSION = {
   1: ['schemaVersion', 'ruleVersion', 'grants', 'trips', 'settings'],
   2: ['schemaVersion', 'ruleVersion', 'grants', 'trips', 'settings', 'service'],
+  3: ['schemaVersion', 'ruleVersion', 'grants', 'trips', 'settings', 'service', 'merit'],
 };
 
 const KEYS = {
@@ -321,12 +346,12 @@ function exactKeys(obj, keys) {
 
 /**
  * 외부 입력(unknown)을 전체 상태로 검증한다. error가 하나라도 있으면 사용하지 않는다.
- * version은 검증할 기록 판(1 또는 2). 이행기는 1판 원본을 1판 규칙으로 먼저 검증한다.
+ * version은 검증할 기록 판(1·2·3). 이행기는 1판 원본을 1판 규칙으로 먼저 검증한다.
  * @param {unknown} input
- * @param {{version?: 1|2}} [opts]
+ * @param {{version?: 1|2|3}} [opts]
  * @returns {Issue[]}
  */
-export function validateState(input, { version = 2 } = {}) {
+export function validateState(input, { version = 3 } = {}) {
   const stateKeys = STATE_KEYS_BY_VERSION[version];
   if (!stateKeys) throw new RangeError(`unsupported validation version: ${String(version)}`);
   if (!exactKeys(input, stateKeys)) return [err('STATE_SHAPE', '앱 기록 형식이 아닙니다.')];
@@ -366,6 +391,7 @@ export function validateState(input, { version = 2 } = {}) {
   }
   out.push(...validateSettings(s, s.settings));
   if (version >= 2) out.push(...validateService(s.service));
+  if (version >= 3) out.push(...validateMerit(s.merit));
   if (out.some((i) => i.severity === 'error')) return dedupe(out);
 
   // 구조가 유효할 때만 상호 불변식 검사

@@ -1,8 +1,8 @@
 // 출타 장부 service worker — 앱 코드만 캐시한다. 개인 기록(localStorage)은 캐시에 넣지 않는다.
 // 앱 파일을 바꾸면 `npm run stamp`로 CONTENT_HASH를 갱신한다 (npm test가 불일치를 잡는다).
 // 해시가 바뀌면 sw.js 바이트가 달라져 설치된 기기가 새 버전을 감지한다. 캐시 이름에도 들어가 옛 캐시를 정리한다.
-const VERSION = '1.1.1';
-const CONTENT_HASH = '5f9feb8823317b4e';
+const VERSION = '1.2.0';
+const CONTENT_HASH = '5e59ae4c3f8b807b';
 const PREFIX = 'airforce-leave-calendar-';
 const CACHE = `${PREFIX}${VERSION}-${CONTENT_HASH}`;
 const PRECACHE = [
@@ -18,6 +18,7 @@ const PRECACHE = [
   './src/domain/model.js',
   './src/domain/balances.js',
   './src/domain/validation.js',
+  './src/domain/merit.js',
   './src/domain/service.js',
   './src/domain/migrate.js',
   './src/ui/dom.js',

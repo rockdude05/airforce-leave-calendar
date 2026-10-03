@@ -408,6 +408,9 @@ div.pass__main { cursor: default; }
 .visit-dot.is-used { background: var(--plum); }
 .visit-dot.is-planned { background: repeating-linear-gradient(135deg, #CDB8DA 0 3px, #fff 3px 6px); border-style: dashed; }
 .visit-dot.is-over { border-color: var(--danger); }
+.merit-meter { height: 10px; margin: 6px 0 10px; border-radius: 999px; background: var(--card); border: 2px solid var(--plum); overflow: hidden; }
+.merit-meter__fill { display: block; height: 100%; background: var(--plum); }
+.merit-preview:empty { display: none; }
 
 /* ---------- 설정 ---------- */
 .rules { padding-left: 20px; margin: 0 0 8px; font-size: 14px; }
