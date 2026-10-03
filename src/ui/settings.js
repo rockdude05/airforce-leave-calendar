@@ -1,5 +1,5 @@
-import { h, fill, issueList } from './dom.js';
-import { RULE_VERSION } from '../domain/model.js';
+import { h, fill, issueList, formatDate } from './dom.js';
+import { ruleVersionLabel } from '../domain/model.js';
 import { dotDate, SERVICE_DATE_LABELS } from './service.js';
 import { computeSchedule } from '../domain/service.js';
 import { RULE_TOPICS } from '../feedback.js';
@@ -35,7 +35,7 @@ export function renderSettings(root, { state, today, onEditService, onExport, on
       installGuide(install)),
     h('section', { 'aria-labelledby': 'rules-title' },
       h('h2', { id: 'rules-title', class: 'section-title' }, '적용 규칙'),
-      h('p', { class: 'muted small' }, `작근단 수송대대 병 기준 · 규칙 버전 ${RULE_VERSION}`),
+      h('p', { class: 'muted small' }, `작근단 수송대대 병 기준 · 적용 규칙 ${ruleVersionLabel()}`),
       h('h3', { class: 'sub-title' }, '앱이 계산하는 것'),
       h('ul', { class: 'rules' }, ruleItems(RULE_TOPICS.calculated, onAsk)),
       h('h3', { class: 'sub-title' }, '부대 확인이 필요해 판정하지 않는 것'),
@@ -92,11 +92,11 @@ export function renderRestoreConfirm(root, { current, incoming, fromVersion, iss
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': '닫기', onClick: onClose }, '✕')),
     h('div', { class: 'sheet__body' },
       h('dl', { class: 'compare' },
-        h('dt', null, '백업 파일'), h('dd', null, count(incoming), exportedAt ? h('span', { class: 'muted small' }, ` (${exportedAt.slice(0, 10)} 저장)`) : null),
+        h('dt', null, '백업 파일'), h('dd', null, count(incoming), exportedAt ? h('span', { class: 'muted small' }, ` (${formatDate(exportedAt.slice(0, 10), { weekday: false, year: true })} 저장)`) : null),
         h('dt', null, '지금 기록'), h('dd', null, count(current))),
       issues.length ? issueList(issues) : null,
       lost ? h('p', { class: 'issue issue--warning', 'data-testid': 'restore-service-warning' },
-        `이 백업에는 복무 정보가 없어 지금 복무 정보(입대일 ${lost.enlistDate}, ${lost.performanceCycleWeeks}주 주기)가 지워집니다`) : null,
+        `이 백업에는 복무 정보가 없어 지금 복무 정보(입대일 ${formatDate(lost.enlistDate, { weekday: false, year: true })}, ${lost.performanceCycleWeeks}주 주기)가 지워집니다`) : null,
       fromVersion < 3 ? h('p', { class: 'issue issue--warning', 'data-testid': 'restore-merit-warning' },
         '이 백업에는 가점 정보가 없어 가점 0점·기준 없음으로 복원됩니다') : null,
       h('p', { class: 'small' }, '복원하면 지금 기록이 백업 파일 내용으로 바뀝니다. 먼저 지금 기록을 받아 두세요.'),

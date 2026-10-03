@@ -2,6 +2,7 @@
 import { STORAGE_KEY, createEmptyState } from './domain/model.js';
 import { validateState } from './domain/validation.js';
 import { migrateState } from './domain/migrate.js';
+import { isDateOnly } from './domain/dates.js';
 
 export const MAX_BACKUP_BYTES = 2 * 1024 * 1024;
 export const BACKUP_APP_ID = 'airforce-leave-calendar';
@@ -66,7 +67,7 @@ function describe(e) {
   const name = e && typeof e === 'object' && 'name' in e ? String(e.name) : '';
   if (/quota/i.test(name) || /quota/i.test(String(e?.message))) return '기기 저장 공간(quota)이 부족해 저장하지 못했습니다.';
   if (/security/i.test(name) || /security/i.test(String(e?.message))) return '브라우저가 이 사이트의 저장을 막았습니다 (개인정보 보호 모드 등).';
-  return `기기 저장소를 사용할 수 없습니다: ${String(e?.message ?? e)}`;
+  return '기기 저장소를 사용할 수 없습니다. 브라우저를 다시 열거나 다른 브라우저(Safari·Chrome)에서 열어 주세요.';
 }
 
 export function serializeBackup(state, exportedAt = new Date().toISOString()) {
@@ -91,5 +92,10 @@ export function parseBackup(text) {
   const candidate = parsed && typeof parsed === 'object' && parsed.app === BACKUP_APP_ID && 'state' in parsed ? parsed.state : parsed;
   const m = migrateState(candidate);
   if (!m.ok) return m.future ? { ok: false, future: true, issues: m.issues } : { ok: false, issues: m.issues };
-  return { ok: true, state: m.state, migrated: m.migrated, fromVersion: m.fromVersion, issues: m.issues, exportedAt: typeof parsed.exportedAt === 'string' ? parsed.exportedAt : null };
+  return { ok: true, state: m.state, migrated: m.migrated, fromVersion: m.fromVersion, issues: m.issues, exportedAt: validExportedAt(parsed.exportedAt) };
+}
+
+/** 백업 저장 시각은 실제 날짜일 때만 쓴다 — 'undefined' 같은 문자열을 화면에 내지 않기 위해 */
+function validExportedAt(v) {
+  return typeof v === 'string' && isDateOnly(v.slice(0, 10)) && !Number.isNaN(Date.parse(v)) ? v : null;
 }

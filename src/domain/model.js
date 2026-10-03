@@ -58,6 +58,13 @@ export function createEmptyState(today) {
   };
 }
 
+/** 화면용 규칙 버전 이름: 'unit-user-2026-10-02.2' → '2026년 10월 2일 기준 (2차)'. 내부 값은 문의 양식에만 쓴다. */
+export function ruleVersionLabel(v = RULE_VERSION) {
+  const m = /(\d{4})-(\d{2})-(\d{2})(?:\.(\d+))?$/.exec(v);
+  if (!m) return '사용자 확인 규칙';
+  return `${Number(m[1])}년 ${Number(m[2])}월 ${Number(m[3])}일 기준${m[4] ? ` (${m[4]}차)` : ''}`;
+}
+
 /** 가점 없음·기준 없음 */
 export function emptyMerit() {
   return { points: 0, pointsPerDay: null };

@@ -1,4 +1,4 @@
-import { compareDates, isDateOnly, addDays } from './dates.js';
+import { compareDates, isDateOnly, addDays, koreanDate } from './dates.js';
 import {
   GRANT_KINDS, SEGMENT_KINDS, TRIP_STATUSES, TRANSPORT_ASSESSMENTS, SEGMENT_KIND_LABELS, VISIT_PRINCIPLE_LIMIT, OUTING_MONTHLY_LIMIT,
   MERIT_POINTS_MAX, MERIT_PER_DAY_MAX,
@@ -188,7 +188,7 @@ function grantAllocationIssues(state, grantIds) {
       for (const s of t.segments) {
         if (s.kind === 'leave' && s.grantId === id && !inGrantWindow(g, s.start, s.end)) {
           const w = grantWindow(g);
-          out.push(err('GRANT_OUT_OF_WINDOW', `'${g.label}'은 ${w.start}${w.end ? `~${w.end}` : ' 이후'}에만 배정할 수 있습니다.`));
+          out.push(err('GRANT_OUT_OF_WINDOW', `'${g.label}'은 ${koreanDate(w.start)}${w.end ? `~${koreanDate(w.end)}` : ' 이후'}에만 배정할 수 있습니다.`));
         }
       }
     }
@@ -225,7 +225,7 @@ export function validateTrip(state, candidate, replaceId = null) {
     const visits = candidate.segments.filter((s) => s.kind === 'visit');
     if (visits.length) {
       if (visits.some((s) => compareDates(s.start, state.settings.visitBaselineAsOf) < 0)) {
-        out.push(err('VISIT_BEFORE_BASELINE', `면회외출 시작 전 횟수(${state.settings.visitBaselineAsOf} 기준)에 이미 포함된 기간입니다. 중복 집계를 막기 위해 기준일부터의 날짜만 기록할 수 있습니다.`));
+        out.push(err('VISIT_BEFORE_BASELINE', `면회외출 시작 전 횟수(${koreanDate(state.settings.visitBaselineAsOf)} 기준)에 이미 포함된 기간입니다. 중복 집계를 막기 위해 기준일부터의 날짜만 기록할 수 있습니다.`));
       }
       const v = visitCounts(next);
       if (v.total > VISIT_PRINCIPLE_LIMIT) {
@@ -356,7 +356,7 @@ export function validateState(input, { version = 3 } = {}) {
   if (!stateKeys) throw new RangeError(`unsupported validation version: ${String(version)}`);
   if (!exactKeys(input, stateKeys)) return [err('STATE_SHAPE', '앱 기록 형식이 아닙니다.')];
   const s = /** @type {any} */ (input);
-  if (s.schemaVersion !== version) return [err('SCHEMA_VERSION', `지원하지 않는 기록 버전입니다 (${String(s.schemaVersion)}).`)];
+  if (s.schemaVersion !== version) return [err('SCHEMA_VERSION', '지원하지 않는 기록 버전입니다.')];
   if (typeof s.ruleVersion !== 'string' || s.ruleVersion.length > LIMITS.id) return [err('STATE_SHAPE', '규칙 버전 형식이 올바르지 않습니다.')];
   if (!Array.isArray(s.grants) || !Array.isArray(s.trips) || !exactKeys(s.settings, KEYS.settings)) {
     return [err('STATE_SHAPE', '앱 기록 형식이 아닙니다.')];
@@ -367,7 +367,7 @@ export function validateState(input, { version = 3 } = {}) {
   for (const g of s.grants) {
     if (!exactKeys(g, KEYS.grant)) { out.push(err('GRANT_SHAPE', '지급 건 형식이 올바르지 않습니다.')); continue; }
     out.push(...grantFieldIssues(g));
-    if (grantIds.has(g.id)) out.push(err('DUPLICATE_ID', `지급 건 식별자 중복: ${g.id}`));
+    if (grantIds.has(g.id)) out.push(err('DUPLICATE_ID', '같은 휴가 항목이 두 번 들어 있습니다.'));
     grantIds.add(g.id);
   }
   const tripIds = new Set();
@@ -379,14 +379,14 @@ export function validateState(input, { version = 3 } = {}) {
       continue;
     }
     out.push(...tripFieldIssues(t));
-    if (tripIds.has(t.id)) out.push(err('DUPLICATE_ID', `일정 식별자 중복: ${t.id}`));
+    if (tripIds.has(t.id)) out.push(err('DUPLICATE_ID', '같은 일정이 두 번 들어 있습니다.'));
     tripIds.add(t.id);
     for (const seg of t.segments) {
-      if (segIds.has(seg.id)) out.push(err('DUPLICATE_ID', `구간 식별자 중복: ${seg.id}`));
+      if (segIds.has(seg.id)) out.push(err('DUPLICATE_ID', '같은 일정 구간이 두 번 들어 있습니다.'));
     }
     for (const seg of t.segments) {
       segIds.add(seg.id);
-      if (seg.kind === 'leave' && !grantIds.has(seg.grantId)) out.push(err('GRANT_MISSING', `없는 휴가를 참조하는 일정이 있습니다: ${t.title}`));
+      if (seg.kind === 'leave' && !grantIds.has(seg.grantId)) out.push(err('GRANT_MISSING', `없는 휴가를 참조하는 일정이 있습니다${typeof t.title === 'string' && t.title ? `: ${t.title}` : ''}`));
     }
   }
   out.push(...validateSettings(s, s.settings));

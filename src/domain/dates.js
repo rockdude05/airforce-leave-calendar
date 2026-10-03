@@ -104,3 +104,9 @@ export function monthGrid(month) {
   }
   return cells;
 }
+
+/** 사용자 문구용 날짜: '2026-10-03' → '2026년 10월 3일' */
+export function koreanDate(date) {
+  const [y, m, d] = date.split('-').map(Number);
+  return `${y}년 ${m}월 ${d}일`;
+}
