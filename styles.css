@@ -181,6 +181,8 @@ p { margin: 0 0 8px; }
 .btn--on-dark { background: #fff; color: var(--ink); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.btn-row--split { display: grid; grid-template-columns: 1fr 1fr; }
+.btn-row--split .btn { width: 100%; box-sizing: border-box; text-align: center; }
 .icon-btn {
   min-width: 44px; min-height: 44px; border: 0; background: none; border-radius: 6px;
   font-size: 24px; line-height: 1; color: var(--ink); cursor: pointer;
@@ -269,9 +271,11 @@ div.pass__main { cursor: default; }
 .pass__note { font-size: 11px; line-height: 1.3; color: #fff; margin-top: 4px; position: relative; }
 
 /* ---------- 달력: 정밀 계기 격자 ---------- */
-.cal-head { display: flex; align-items: center; gap: 4px; margin: 6px 0 8px; }
-.cal-head__title { font-size: 20px; margin: 0; letter-spacing: -0.03em; min-width: 7.5em; text-align: center; }
-.cal-head__today { margin-left: auto; }
+.cal-head { display: grid; grid-template-columns: minmax(48px, 1fr) auto minmax(48px, 1fr); align-items: center; margin: 6px 0 8px; }
+.cal-head__nav { display: flex; align-items: center; gap: 4px; justify-self: center; }
+.cal-head__side { min-width: 0; }
+.cal-head__side--end { justify-self: end; }
+.cal-head__title { font-size: 20px; margin: 0; letter-spacing: -0.03em; min-width: 6.2em; text-align: center; }
 .cal { background: var(--card); border-radius: 8px; border: 1px solid #B9C4D3; overflow: hidden; box-shadow: 0 1px 0 rgba(15, 31, 61, 0.04); }
 .cal__row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .cal__row + .cal__row { border-top: 1px solid var(--line-soft); }
@@ -666,7 +670,7 @@ legend { font-weight: 800; font-size: 15px; padding: 0; margin-bottom: 8px; }
 }
 .svc-card .section-title { margin: 0; }
 .svc-card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-.svc-card--empty .section-title { margin-bottom: 6px; }
+.svc-card--empty .svc-card__head { margin-bottom: 6px; }
 .svc-card__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line-soft); border: 1px solid var(--line-soft); border-radius: 4px; overflow: hidden; }
 .svc-card__item { display: flex; flex-direction: column; min-width: 0; padding: 8px 10px; background: var(--card); font-size: 13px; color: var(--slate); }
 .svc-card__item strong { font-size: 20px; color: var(--ink); letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -751,7 +755,9 @@ legend { font-weight: 800; font-size: 15px; padding: 0; margin-bottom: 8px; }
 body.has-fallback-sheet { overflow: hidden; }
 
 /* ---------------- 일정 공유 (1.4) ---------------- */
-.share-row { display: flex; gap: 10px; margin: 0 2px 10px; }
+.share-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 2px 10px; }
+.share-row--single { grid-template-columns: 1fr; }
+.share-row .btn { width: 100%; }
 .share-list { list-style: none; padding: 0; margin: 12px 0 8px; display: grid; gap: 8px; }
 .share-item { border: 1px solid var(--steel); border-radius: 6px; padding: 8px 10px; background: var(--card); }
 .share-item__pick { align-items: flex-start; }
@@ -797,3 +803,11 @@ body.has-fallback-sheet { overflow: hidden; }
 .view-only-note { padding: 12px 14px; border-radius: 6px; background: var(--card); border: 1px solid var(--line); margin-bottom: 12px; }
 .view-only-note p { margin: 0 0 4px; }
 .view-only-switch { margin-bottom: 6px; }
+.pass__hint { font-size: 13px; color: var(--slate); line-height: 1.4; }
+/* 머리글 오른쪽 칸은 좁다(320px에서 약 40px). 오늘 단추는 작게, 아주 좁은 화면에서는 제목·화살표도 줄여 겹치지 않게 한다 */
+.cal-head__today { min-height: 44px; min-width: 44px; padding: 8px 10px; font-size: 14px; }
+@media (max-width: 360px) {
+  .cal-head__title { min-width: 5.2em; font-size: 18px; }
+  .cal-head__nav .icon-btn { font-size: 22px; } /* 터치 영역 44px은 유지 */
+  .cal-head__today { padding: 8px 8px; font-size: 13px; }
+}

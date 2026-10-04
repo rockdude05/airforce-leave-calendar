@@ -60,7 +60,10 @@ function pass({ state, balances, today, onOpenTrip, onAddTrip }) {
     body = h('div', { class: 'pass__main' },
       h('span', { class: 'pass__label' }, '다음 출타'),
       h('strong', { class: 'pass__title pass__title--empty' }, state.grants.length ? '계획한 출타가 없습니다' : '보유 휴가부터 입력하세요'),
-      h('button', { type: 'button', class: 'btn btn--small btn--ghost', onClick: () => onAddTrip() }, state.grants.length ? '일정 추가' : '내 휴가 입력'));
+      // 일반 일정의 입구는 날짜 상세의 '이 날부터 일정 추가' 하나로 둔다(같은 단추가 두 곳에 있던 것을 정리)
+      state.grants.length
+        ? h('span', { class: 'pass__hint' }, "날짜를 고른 뒤 아래 '이 날부터 일정 추가'를 누르세요")
+        : h('button', { type: 'button', class: 'btn btn--small btn--ghost', onClick: () => onAddTrip() }, '내 휴가 입력'));
   }
   return h('section', { class: 'pass', 'aria-label': '출타증 요약' },
     body,
@@ -86,11 +89,15 @@ export function renderCalendar(root, opts) {
   const marks = viewOnly ? new Map() : serviceMarks(opts.schedule ?? null);
   const [y, m] = month.split('-').map(Number);
 
+  // 3열: [빈 칸] [‹ 제목 ›] [오늘]. 오늘 단추가 있든 없든 제목은 화면 가운데에 머문다.
   const head = h('div', { class: 'cal-head' },
-    h('button', { type: 'button', class: 'icon-btn', 'aria-label': '이전 달', onClick: () => opts.onMonthChange(shiftMonth(month, -1)) }, '‹'),
-    h('h2', { class: 'cal-head__title', 'aria-live': 'polite' }, `${y}년 ${m}월`),
-    h('button', { type: 'button', class: 'icon-btn', 'aria-label': '다음 달', onClick: () => opts.onMonthChange(shiftMonth(month, 1)) }, '›'),
-    month !== today.slice(0, 7) ? h('button', { type: 'button', class: 'btn btn--small btn--ghost cal-head__today', onClick: () => { opts.onMonthChange(today.slice(0, 7)); opts.onSelectDate(today); } }, '오늘') : null);
+    h('span', { class: 'cal-head__side' }),
+    h('div', { class: 'cal-head__nav' },
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': '이전 달', onClick: () => opts.onMonthChange(shiftMonth(month, -1)) }, '‹'),
+      h('h2', { class: 'cal-head__title', 'aria-live': 'polite' }, `${y}년 ${m}월`),
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': '다음 달', onClick: () => opts.onMonthChange(shiftMonth(month, 1)) }, '›')),
+    h('span', { class: 'cal-head__side cal-head__side--end' },
+      month !== today.slice(0, 7) ? h('button', { type: 'button', class: 'btn btn--small btn--ghost cal-head__today', onClick: () => { opts.onMonthChange(today.slice(0, 7)); opts.onSelectDate(today); } }, '오늘') : null));
 
   const grid = h('div', { class: 'cal', role: 'grid', 'aria-label': `${y}년 ${m}월 달력` },
     h('div', { class: 'cal__row cal__row--head', role: 'row' },
@@ -149,7 +156,7 @@ export function renderCalendar(root, opts) {
 /** 일정 공유·받기 입구. 공유는 내 일정이 있어야 의미가 있으므로 onShare가 없으면(보기 전용) 받기만 보인다. */
 function shareRow({ onShare, onReceive }) {
   if (!onShare && !onReceive) return null;
-  return h('div', { class: 'share-row' },
+  return h('div', { class: `share-row${onShare && onReceive ? '' : ' share-row--single'}` },
     onShare ? h('button', { type: 'button', class: 'btn btn--small btn--ghost', 'data-testid': 'open-share', onClick: onShare }, '일정 공유') : null,
     onReceive ? h('button', { type: 'button', class: 'btn btn--small btn--ghost', 'data-testid': 'open-receive', onClick: onReceive }, '일정 받기') : null);
 }

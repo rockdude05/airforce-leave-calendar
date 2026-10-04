@@ -221,10 +221,12 @@ export function renderServiceCard(root, { schedule, today, onEdit }) {
 
 export function serviceCard({ schedule, today, onEdit }) {
   if (!schedule) {
+    // 입력 전에도 입력 후와 같은 머리글(제목 왼쪽·단추 오른쪽) 배치를 쓴다
     return h('section', { class: 'svc-card svc-card--empty', 'data-testid': 'service-card', 'aria-labelledby': 'svc-card-title' },
-      h('h2', { id: 'svc-card-title', class: 'section-title' }, '복무 일정'),
-      h('p', { class: 'small' }, '입대일을 넣으면 진급일·전역일·성과제외박 날짜를 계산해 달력에 표시합니다.'),
-      h('button', { type: 'button', class: 'btn btn--ghost btn--small', onClick: onEdit }, '입대일 입력'));
+      h('div', { class: 'svc-card__head' },
+        h('h2', { id: 'svc-card-title', class: 'section-title' }, '복무 일정'),
+        h('button', { type: 'button', class: 'btn btn--primary btn--small', onClick: onEdit }, '입대일 입력')),
+      h('p', { class: 'small' }, '입대일을 넣으면 진급일·전역일·성과제외박 날짜를 계산해 달력에 표시합니다.'));
   }
   const nextPromo = PROMOTIONS.find((p) => compareDates(schedule[p.key], today) > 0);
   const discharged = schedule.rank === '전역';

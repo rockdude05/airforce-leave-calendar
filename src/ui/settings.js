@@ -26,7 +26,7 @@ export function renderSettings(root, { state, today, onEditService, onExport, on
       h('p', { class: 'muted small' }, viewOnly
         ? `현재 기록: 받은 일정 ${(state.received ?? []).length}명 (숨긴 내 기록도 백업 파일에 그대로 들어갑니다)`
         : `현재 기록: 휴가 ${state.grants.length}건, 일정 ${state.trips.length}건, 받은 일정 ${(state.received ?? []).length}명`),
-      h('div', { class: 'btn-row' },
+      h('div', { class: 'btn-row btn-row--split' },
         h('button', { type: 'button', class: 'btn btn--primary', 'data-testid': 'export', onClick: onExport }, '백업 파일 받기'),
         h('label', { for: 'restore-file', class: 'btn btn--ghost', 'data-testid': 'import-label', tabindex: '0',
           onKeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } } }, '백업에서 복원'),
