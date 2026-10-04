@@ -460,6 +460,7 @@ div.pass__main { cursor: default; }
 .sheet__head h2 { margin: 0; font-size: 19px; }
 .sheet__body { padding: 20px 16px calc(32px + env(safe-area-inset-bottom)); }
 .sheet__actions { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-top: 16px; }
+.sheet__actions > .btn:only-child { grid-column: 1 / -1; } /* 단추가 하나면 전폭 (닫기만 있는 시트) */
 .quick-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--line); }
 
 /* ---------- 폼 ---------- */
