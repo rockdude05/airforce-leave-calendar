@@ -1,8 +1,10 @@
 import { h, fill, add, formatDate, issueList, shortDate } from './dom.js';
-import { addDays, inclusiveDays, isDateOnly, compareDates } from '../domain/dates.js';
+import { addDays, inclusiveDays, isDateOnly, compareDates, seoulToday } from '../domain/dates.js';
 import { SEGMENT_KIND_LABELS, TRIP_STATUS_LABELS, emptyTransport, newId } from '../domain/model.js';
 import { validateTrip, LIMITS, transportRule, TRANSPORT_RULE_TEXT } from '../domain/validation.js';
 import { calculateBalances, inGrantWindow } from '../domain/balances.js';
+import { preparationContext, normalizePreparation } from '../domain/preparation.js';
+import { createPreparationPanel } from './preparation.js';
 import { ISSUE_TOPIC } from '../feedback.js';
 
 /**
@@ -12,7 +14,7 @@ import { ISSUE_TOPIC } from '../feedback.js';
  *   draft?:{kind:string,grantId:string|null,start:string,end:string,title?:string},
  *   onSave:(trip:any, replaceId:string|null, opts:{confirmed:boolean})=>{ok:boolean,issues?:any[],error?:string},
  *   onDelete:(id:string)=>{ok:boolean,error?:string}, onClose:()=>void}} opts
- * @returns {{isDirty:()=>boolean}}
+ * @returns {{isDirty:()=>boolean,refreshDate:()=>void}}
  */
 export function renderTripEditor(root, opts) {
   const { state, today } = opts;
@@ -20,6 +22,7 @@ export function renderTripEditor(root, opts) {
   const original = opts.trip ? structuredClone(opts.trip) : null;
   const draft = opts.trip ? structuredClone(opts.trip) : opts.draft ? tripFromDraft(opts.draft) : newTrip(state, today, opts.startDate ?? today);
   const pristine = JSON.stringify(draft);
+  let preparationBasis = preparationContext(draft.segments)?.basis ?? null;
   let attempted = false;
   let confirmWarnings = false;
   let saveError = '';
@@ -35,6 +38,19 @@ export function renderTripEditor(root, opts) {
   const summaryBox = h('div', { class: 'trip-summary', 'aria-live': 'polite' });
   const issueBox = h('div', { class: 'issue-box' });
   const transportBox = h('div');
+  const preparation = createPreparationPanel({ trip: draft, grants: state.grants, getToday: seoulToday, onAsk: opts.onAsk,
+    onToggle: (id, checked) => {
+      draft.preparation = checked ? [...draft.preparation, id] : draft.preparation.filter(key => key !== id);
+      update();
+    },
+  });
+  function syncPreparation() {
+    const basis = preparationContext(draft.segments)?.basis;
+    const reset = Boolean(basis && preparationBasis && basis !== preparationBasis);
+    if (reset) draft.preparation = [];
+    if (basis) preparationBasis = basis;
+    preparation.refresh({ resetNotice: reset });
+  }
 
   form.addEventListener('submit', (e) => { e.preventDefault(); save(); });
 
@@ -167,10 +183,12 @@ export function renderTripEditor(root, opts) {
   }
 
   function normalized() {
-    return { ...draft, title: draft.title.trim(), shareConfirmed: draft.shareConfirmed ?? false };
+    return { ...draft, title: draft.title.trim(), shareConfirmed: draft.shareConfirmed ?? false, preparation: preparationContext(draft.segments) ? normalizePreparation(draft.preparation, draft.segments) : [...draft.preparation] };
   }
 
   function update(keepQuick = false) {
+    opts.onRefreshDate?.();
+    syncPreparation();
     if (!keepQuick) quickIssues = null;
     if (!transportReset && originalSegments && original.transport.assessment !== 'unknown'
       && JSON.stringify(draft.segments) !== originalSegments) {
@@ -214,6 +232,7 @@ export function renderTripEditor(root, opts) {
 
   function save(statusOverride) {
     saveError = '';
+    syncPreparation();
     // 빠른 동작은 편집 중인 내용이 아니라 저장된 일정의 상태만 바꾼다. 편집 중이면 먼저 확인한다.
     if (statusOverride && JSON.stringify(draft) !== pristine
       && !window.confirm('수정 중인 내용은 저장되지 않고 상태만 바뀝니다. 계속할까요? (수정 내용까지 저장하려면 위 상태를 고른 뒤 \'변경 저장\'을 누르세요)')) return;
@@ -252,7 +271,7 @@ export function renderTripEditor(root, opts) {
       h('input', { id: 'trip-title', type: 'text', value: draft.title, maxlength: LIMITS.title, placeholder: '예: 첫 정기휴가', autocomplete: 'off', onInput: (e) => { draft.title = e.target.value; update(); } })),
     h('fieldset', { class: 'seg-ctrl' }, h('legend', null, '상태'),
       statusRadio('planned'), statusRadio('completed'), original ? statusRadio('cancelled') : null),
-    segBox, summaryBox, transportBox, issueBox,
+    segBox, summaryBox, preparation.element, transportBox, issueBox,
     h('div', { class: 'sheet__actions' },
       h('button', { type: 'submit', class: 'btn btn--primary', 'data-testid': 'save-trip' }, isNew ? '일정 저장' : '변경 저장'),
       h('button', { type: 'button', class: 'btn btn--ghost', onClick: () => opts.onClose() }, '닫기')),
@@ -266,7 +285,7 @@ export function renderTripEditor(root, opts) {
   renderSegments();
   update();
 
-  return { isDirty: () => JSON.stringify(draft) !== pristine };
+  return { isDirty: () => JSON.stringify(draft) !== pristine, refreshDate: preparation.refreshDate };
 }
 
 /** 그 날짜에 쓸 수 있는 휴가를 앞에, 그 안에서는 만료가 빠른 순으로 */
@@ -297,6 +316,7 @@ function newTrip(state, today, start) {
     segments: [{ id: newId('s'), kind: 'leave', start, end: start, grantId: defaultGrantId(state, start) }],
     transport: emptyTransport(),
     shareConfirmed: false,
+    preparation: [],
   };
 }
 
@@ -309,5 +329,6 @@ function tripFromDraft(d) {
     segments: [{ id: newId('s'), kind: d.kind, start: d.start, end: d.end, grantId: d.grantId ?? null }],
     transport: emptyTransport(),
     shareConfirmed: false,
+    preparation: [],
   };
 }

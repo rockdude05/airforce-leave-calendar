@@ -5,6 +5,7 @@ import { calculateBalances } from './domain/balances.js';
 import { validateTrip, validateGrantChange, validateGrantDelete, validateSettings } from './domain/validation.js';
 import { convertMerit } from './domain/merit.js';
 import { planPromotionGrants, promotionEntryAfterEdit, promotionGrantsAfterDelete, entryForGrant } from './domain/promotion.js';
+import { snapshotGrantKinds, hasChangedGrantKinds, resetPreparationForGrant } from './domain/preparation.js';
 import { loadState, saveState, serializeBackup, parseBackup, MAX_BACKUP_BYTES } from './storage.js';
 import { h, fill } from './ui/dom.js';
 import { renderCalendar } from './ui/calendar.js';
@@ -197,6 +198,7 @@ let sheetSerial = 0;
 
 function openSheet(renderFn, { kind = 'edit' } = {}) {
   sheetSerial += 1;
+  sheetHandle = null;
   sheet.replaceChildren();
   sheetKind = kind;
   sheetHandle = renderFn(sheet) ?? null;
@@ -456,15 +458,26 @@ function afterShare(serial, result, { text, title, note, copied }) {
   // 'cancelled': 사용자가 공유 시트를 닫음 — 안내 없이 현재 화면 유지
 }
 
+function tripSaveGuard() {
+  const baseline = snapshotGrantKinds(state.grants);
+  return (candidate, replaceId, options) => {
+    if (hasChangedGrantKinds(candidate, baseline, state.grants)) {
+      return { ok: false, error: '사용할 휴가가 다른 창에서 바뀌었습니다. 지금 입력은 그대로 있습니다. 일정을 다시 열어 확인해 주세요.' };
+    }
+    return saveTrip(candidate, replaceId, options);
+  };
+}
+
 function openTrip(id) {
   if (viewOnly()) return;
   const trip = state.trips.find((t) => t.id === id) ?? null;
   const base = trip ? JSON.stringify(trip) : null;
+  const guardedSave = tripSaveGuard();
   openSheet((root) => renderTripEditor(root, {
-    state, today, trip,
+    state, today, trip, onRefreshDate: refreshCurrentDate,
     onSave: (c, replaceId, o) => {
       const stale = staleCheck(state.trips, replaceId, base);
-      return stale ? { ok: false, error: stale } : saveTrip(c, replaceId, o);
+      return stale ? { ok: false, error: stale } : guardedSave(c, replaceId, o);
     },
     onDelete: (tid) => {
       const stale = staleCheck(state.trips, tid, base);
@@ -479,8 +492,8 @@ function addTrip(date) {
   if (viewOnly()) return;
   if (!state.grants.length && date === undefined) { setView('grants'); return; }
   openSheet((root) => renderTripEditor(root, {
-    state, today, trip: null, startDate: date ?? selected,
-    onSave: saveTrip, onDelete: deleteTrip, onClose: () => closeSheet(), onAsk: askRule,
+    state, today, trip: null, onRefreshDate: refreshCurrentDate, startDate: date ?? selected,
+    onSave: tripSaveGuard(), onDelete: deleteTrip, onClose: () => closeSheet(), onAsk: askRule,
   }));
 }
 
@@ -489,13 +502,14 @@ function addPerformanceTrip({ n, start, days }) {
   if (viewOnly()) return;
   if (!days) return;
   openSheet((root) => renderTripEditor(root, {
-    state, today, trip: null,
+    state, today, trip: null, onRefreshDate: refreshCurrentDate,
     draft: { kind: 'performance', grantId: null, start, end: addDays(start, days - 1), title: `성과제외박 ${n}회차` },
-    onSave: saveTrip, onDelete: deleteTrip, onClose: () => closeSheet(), onAsk: askRule,
+    onSave: tripSaveGuard(), onDelete: deleteTrip, onClose: () => closeSheet(), onAsk: askRule,
   }));
 }
 
 function saveTrip(candidate, replaceId, { confirmed }) {
+  refreshCurrentDate();
   const issues = validateTrip(state, candidate, replaceId);
   if (issues.some((i) => i.severity === 'error')) return { ok: false, issues };
   if (issues.some((i) => i.severity === 'warning') && !confirmed) {
@@ -537,8 +551,10 @@ function openGrant(id, { initialKind } = {}) {
       const hit = replaceId ? entryForGrant(state.promotionGrants, replaceId) : null;
       const promotionGrants = hit ? { ...state.promotionGrants, [hit.kind]: promotionEntryAfterEdit(hit.entry, grant, candidate) } : state.promotionGrants;
       const unlinked = hit && hit.entry.status === 'managed' && promotionGrants[hit.kind].status === 'fixed';
-      const r = commit({ ...state, grants, promotionGrants }, replaceId
-        ? `휴가를 수정했습니다.${unlinked ? ' 직접 고친 정기휴가라 진급일 연동을 멈췄습니다.' : ''}` : '휴가를 추가했습니다.');
+      const reset = replaceId && state.grants.find(g => g.id === replaceId)?.kind !== candidate.kind
+        ? resetPreparationForGrant(state.trips, replaceId) : { trips: state.trips, resetCount: 0 };
+      const r = commit({ ...state, grants, promotionGrants, trips: reset.trips }, replaceId
+        ? `휴가를 수정했습니다.${reset.resetCount ? ` 연결된 일정 ${reset.resetCount}건의 준비 체크를 비웠습니다.` : ''}${unlinked ? ' 직접 고친 정기휴가라 진급일 연동을 멈췄습니다.' : ''}` : '휴가를 추가했습니다.');
       if (r.ok) closeSheet({ force: true });
       return r;
     },
@@ -838,11 +854,18 @@ window.addEventListener('hashchange', () => {
   const v = viewFromHash();
   if (v !== view) { view = v; render(); }
 });
-document.addEventListener('visibilitychange', () => {
+function refreshCurrentDate() {
   if (document.visibilityState !== 'visible' || !state) return;
   const now = seoulToday();
-  if (now !== today) { today = now; render(); }
-});
+  if (now !== today) {
+    today = now;
+    render();
+    sheetHandle?.refreshDate?.();
+  }
+}
+document.addEventListener('visibilitychange', refreshCurrentDate);
+window.addEventListener('focus', refreshCurrentDate);
+setInterval(refreshCurrentDate, 60_000);
 
 function render() {
   if (!state) return;

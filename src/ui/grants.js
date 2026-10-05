@@ -2,6 +2,7 @@ import { h, fill, formatDate, issueList } from './dom.js';
 import { compareDates } from '../domain/dates.js';
 import { GRANT_KINDS, GRANT_KIND_LABELS, REGULAR_GUIDE, VISIT_PRINCIPLE_LIMIT, OUTING_MONTHLY_LIMIT, MERIT_POINTS_MAX, MERIT_PER_DAY_MAX, newId } from '../domain/model.js';
 import { LIMITS, VISIT_BASELINE_MAX, outingsInMonth } from '../domain/validation.js';
+import { OJT_GUIDANCE, OJT_NOTICE } from '../domain/ojt-guidance.js';
 import { meritPreview } from '../domain/merit.js';
 import { tripCard } from './calendar.js';
 import { serviceCard, missingPromotionGrants, promoButtons } from './service.js';
@@ -141,6 +142,7 @@ export function renderGrantForm(root, { grant, today, usage, initialKind, auto =
       refresh();
     } }, GRANT_KINDS.map((k) => h('option', { value: k, selected: k === draft.kind }, GRANT_KIND_LABELS[k])))),
   guide,
+  !isNew ? h('p', { class: 'small muted', 'data-testid': 'grant-preparation-note' }, '휴가 종류를 바꾸면 이 휴가를 사용하는 모든 일정의 준비 체크를 비웁니다. 이름·일수·기한만 바꾸면 체크는 유지됩니다.') : null,
   h('div', { class: 'field' }, h('label', { for: 'g-label' }, '이름'),
     h('input', { id: 'g-label', type: 'text', value: draft.label, maxlength: LIMITS.label, autocomplete: 'off', onInput: (e) => { draft.label = e.target.value; labelTouched = true; } })),
   // 수정 화면의 숫자는 '기준일 당시 일수'다. 지금 잔여를 넣으면 그 뒤 사용분이 두 번 빠지므로 분명히 구분한다.
@@ -254,6 +256,7 @@ export function renderMeritForm(root, { merit, onSave, onClose }) {
     perDayInput,
     h('p', { class: 'muted small' }, '부대 기준을 넣으세요. 비워 두면 포상휴가로 바꾸지 않습니다.')),
   preview,
+  h('p', { class: 'small muted', 'data-testid': 'merit-ojt' }, `${OJT_NOTICE}. ${OJT_GUIDANCE.find(n => n.id === 'reward-limit').text} (OJT 8쪽)`),
   h('p', { class: 'muted small' }, '바뀐 포상휴가는 1일씩 휴가 목록에 들어갑니다(만료일은 비어 있으니 부대 기준대로 고치세요). 추가된 휴가를 지웠다면 가점을 직접 고쳐 주세요.'),
   out,
   h('div', { class: 'sheet__actions' },

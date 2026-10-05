@@ -4,6 +4,7 @@ import {
   MERIT_POINTS_MAX, MERIT_PER_DAY_MAX, PROMOTION_KINDS, PROMOTION_STATUSES,
   RECEIVED_LIMIT, SHARE_ITEMS_LIMIT, NICKNAME_LIMIT, COLOR_SLOTS, SHARE_ID_RE,
 } from './model.js';
+import { validatePreparation } from './preparation.js';
 import { validateService } from './service.js';
 import { allocationByGrant, grantWindow, inGrantWindow, isActiveTrip, visitCounts } from './balances.js';
 
@@ -79,7 +80,7 @@ function transportIssues(tr) {
 }
 
 /** 일정 단독 구조 검사 (다른 일정·지급 건과 무관). version<5 기록에는 shareConfirmed가 없다. */
-export function tripFieldIssues(t, { version = 5 } = {}) {
+export function tripFieldIssues(t, { version = 6 } = {}) {
   if (!t || typeof t !== 'object') return [err('TRIP_SHAPE', '일정 형식이 올바르지 않습니다.')];
   const out = [];
   if (!isId(t.id)) out.push(err('ID_INVALID', '일정 식별자가 올바르지 않습니다.'));
@@ -87,6 +88,7 @@ export function tripFieldIssues(t, { version = 5 } = {}) {
   if (!isNonEmptyString(t.title, LIMITS.title)) out.push(err('TITLE_REQUIRED', `제목을 1~${LIMITS.title}자로 입력해 주세요.`, 'title'));
   if (!TRIP_STATUSES.includes(t.status)) out.push(err('TRIP_STATUS', '일정 상태가 올바르지 않습니다.'));
   out.push(...transportIssues(t.transport));
+  if (version >= 6) out.push(...validatePreparation(t.preparation, t.segments));
   if (!Array.isArray(t.segments) || t.segments.length === 0) {
     out.push(err('SEGMENTS_REQUIRED', '날짜 구간을 하나 이상 추가해 주세요.'));
     return out;
@@ -282,7 +284,7 @@ export function validateGrantDelete(state, id) {
 }
 
 /** 면회외출 시작 전 횟수 설정 */
-export function validateSettings(state, settings, { version = 5 } = {}) {
+export function validateSettings(state, settings, { version = 6 } = {}) {
   const out = [];
   if (!settings || typeof settings !== 'object') return [err('SETTINGS_SHAPE', '설정 형식이 올바르지 않습니다.')];
   if (version >= 5) {
@@ -372,6 +374,7 @@ const STATE_KEYS_BY_VERSION = {
   3: ['schemaVersion', 'ruleVersion', 'grants', 'trips', 'settings', 'service', 'merit'],
   4: ['schemaVersion', 'ruleVersion', 'grants', 'trips', 'settings', 'service', 'merit', 'promotionGrants'],
   5: ['schemaVersion', 'ruleVersion', 'grants', 'trips', 'settings', 'service', 'merit', 'promotionGrants', 'received'],
+  6: ['schemaVersion', 'ruleVersion', 'grants', 'trips', 'settings', 'service', 'merit', 'promotionGrants', 'received'],
 };
 
 const KEYS = {
@@ -384,7 +387,7 @@ const KEYS = {
   receivedItem: ['start', 'end', 'confirmed'],
 };
 /** 5판부터 일정에 shareConfirmed, 설정에 shareId·viewOnly가 있다. 이전 판 원본은 그 판의 키로 검증한다. */
-const tripKeys = (version) => (version >= 5 ? [...KEYS.trip, 'shareConfirmed'] : KEYS.trip);
+const tripKeys = (version) => [...KEYS.trip, ...(version >= 5 ? ['shareConfirmed'] : []), ...(version >= 6 ? ['preparation'] : [])];
 const settingsKeys = (version) => (version >= 5 ? [...KEYS.settings, 'shareId', 'viewOnly'] : KEYS.settings);
 
 /* ---------------- 받은 일정 (5판) ---------------- */
@@ -437,12 +440,12 @@ function exactKeys(obj, keys) {
 
 /**
  * 외부 입력(unknown)을 전체 상태로 검증한다. error가 하나라도 있으면 사용하지 않는다.
- * version은 검증할 기록 판(1~5). 이행기는 1판 원본을 1판 규칙으로 먼저 검증한다.
+ * version은 검증할 기록 판(1~6). 이행기는 1판 원본을 1판 규칙으로 먼저 검증한다.
  * @param {unknown} input
- * @param {{version?: 1|2|3|4|5}} [opts]
+ * @param {{version?: 1|2|3|4|5|6}} [opts]
  * @returns {Issue[]}
  */
-export function validateState(input, { version = 5 } = {}) {
+export function validateState(input, { version = 6 } = {}) {
   const stateKeys = STATE_KEYS_BY_VERSION[version];
   if (!stateKeys) throw new RangeError(`unsupported validation version: ${String(version)}`);
   if (!exactKeys(input, stateKeys)) return [err('STATE_SHAPE', '앱 기록 형식이 아닙니다.')];

@@ -1,3 +1,6 @@
+import { applicationWindow } from '../domain/application-window.js';
+import { preparationItems } from '../domain/preparation.js';
+import { APPLICATION_PHASE_TEXT } from './preparation.js';
 import { h, fill, formatDate, formatRange, shortDate, weekdayName } from './dom.js';
 import { monthGrid, weekday, compareDates, inclusiveDays, shiftMonth, addDays } from '../domain/dates.js';
 import { SEGMENT_KIND_LABELS, TRIP_STATUS_LABELS } from '../domain/model.js';
@@ -192,7 +195,7 @@ function legend(hasSchedule, hasPeople = false, viewOnly = false) {
     hasPeople ? h('span', { class: 'legend__item' }, h('i', { class: 'swatch swatch--people', 'aria-hidden': 'true' }), '받은 동기 일정 (사람마다 색)') : null);
 }
 
-function dayDetail({ state, selected, schedule, onOpenTrip, onAddTrip, onPerformanceTrip, viewOnly = false }, grantById, dayMarks, who = [], mine = []) {
+function dayDetail({ state, today, selected, schedule, onOpenTrip, onAddTrip, onPerformanceTrip, viewOnly = false }, grantById, dayMarks, who = [], mine = []) {
   const trips = viewOnly ? [] : state.trips.filter((t) => t.segments.some((s) => compareDates(selected, s.start) >= 0 && compareDates(selected, s.end) <= 0));
   trips.sort((a, b) => Number(isActiveTrip(b)) - Number(isActiveTrip(a)));
   const outToo = mine.length && who.length ? who.map(({ entry }) => entry.nickname) : [];
@@ -202,7 +205,7 @@ function dayDetail({ state, selected, schedule, onOpenTrip, onAddTrip, onPerform
   return h('section', { class: 'day-detail', 'aria-labelledby': 'day-detail-title' },
     h('h2', { id: 'day-detail-title', class: 'section-title' }, formatDate(selected)),
     viewOnly ? null : serviceDetail(dayMarks, schedule, selected, onPerformanceTrip),
-    trips.length ? h('ul', { class: 'trip-list' }, trips.map((t) => tripCard(t, grantById, onOpenTrip))) : empty,
+    trips.length ? h('ul', { class: 'trip-list' }, trips.map((t) => tripCard(t, grantById, onOpenTrip, today))) : empty,
     peopleList(who),
     outToo.length ? h('p', { class: 'small people-same-day', 'data-testid': 'people-same-day' }, `${outToo.join('·')}도 이 날 나갑니다.`) : null,
     viewOnly ? null : h('button', { type: 'button', class: 'btn btn--primary btn--block', 'data-testid': 'add-trip', onClick: () => onAddTrip(selected) }, '이 날부터 일정 추가'));
@@ -217,7 +220,10 @@ export function peopleList(who) {
       h('span', null, `${entry.nickname} · ${statusLabel(item.confirmed)}`))));
 }
 
-export function tripCard(t, grantById, onOpenTrip) {
+export function tripCard(t, grantById, onOpenTrip, today) {
+  const items = preparationItems(t.segments);
+  const count = items.filter(i => t.preparation.includes(i.id)).length;
+  const window = t.status === 'planned' ? applicationWindow(t.segments, today) : null;
   const start = minStart(t);
   const end = maxEnd(t);
   const leaveDays = t.segments.filter((s) => s.kind === 'leave').reduce((n, s) => n + inclusiveDays(s.start, s.end), 0);
@@ -232,7 +238,10 @@ export function tripCard(t, grantById, onOpenTrip) {
         h('strong', { class: 'trip-card__title' }, t.title),
         h('span', { class: `chip chip--${t.status}` }, TRIP_STATUS_LABELS[t.status])),
       h('span', { class: 'trip-card__dates' }, formatRange(start, end)),
-      h('span', { class: 'trip-card__parts' }, parts.join(' + '), leaveDays ? ` · 휴가 ${leaveDays}일 차감` : '')));
+      h('span', { class: 'trip-card__parts' }, parts.join(' + '), leaveDays ? ` · 휴가 ${leaveDays}일 차감` : ''),
+      t.status !== 'cancelled' ? h('span', { class: 'trip-card__preparation small', 'data-testid': 'trip-preparation-summary' },
+        window ? h('span', null, `신청 기간: ${APPLICATION_PHASE_TEXT[window.phase]}`) : null,
+        h('span', null, `출타 준비 ${count}/${items.length}`)) : null));
 }
 
 

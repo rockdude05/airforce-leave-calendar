@@ -2,6 +2,8 @@ import { h, fill, issueList, formatDate } from './dom.js';
 import { ruleVersionLabel } from '../domain/model.js';
 import { dotDate, SERVICE_DATE_LABELS } from './service.js';
 import { computeSchedule } from '../domain/service.js';
+import { OJT_GUIDANCE } from '../domain/ojt-guidance.js';
+import { renderOjtNotes } from './preparation.js';
 import { RULE_TOPICS } from '../feedback.js';
 import { NICKNAME_LIMIT } from '../domain/model.js';
 
@@ -43,6 +45,7 @@ export function renderSettings(root, { state, today, onEditService, onExport, on
       h('h3', { class: 'sub-title rule-group__title' }, '앱이 계산하는 것',
         h('span', { class: 'rule-group__count' }, `${RULE_TOPICS.calculated.length}`)),
       h('ul', { class: 'rule-list' }, ruleItems(RULE_TOPICS.calculated, onAsk)),
+      viewOnly ? null : h('section', { 'data-testid': 'ojt-settings' }, h('h3', { class: 'sub-title' }, 'OJT 참고 안내'), renderOjtNotes(OJT_GUIDANCE, onAsk)),
       h('h3', { class: 'sub-title rule-group__title' }, '부대 확인이 필요해 판정하지 않는 것',
         h('span', { class: 'rule-group__badge' }, '확인 필요')),
       h('p', { class: 'muted small rule-group__hint' }, '부대에서 들은 답이 있으면 문의로 알려 주세요. 확인되면 계산 규칙에 넣습니다.'),
@@ -112,6 +115,8 @@ export function renderRestoreConfirm(root, { current, incoming, fromVersion, iss
         `이 백업에는 복무 정보가 없어 지금 복무 정보(입대일 ${formatDate(lost.enlistDate, { weekday: false, year: true })}, ${lost.performanceCycleWeeks}주 주기)가 지워집니다`) : null,
       fromVersion < 3 ? h('p', { class: 'issue issue--warning', 'data-testid': 'restore-merit-warning' },
         '이 백업에는 가점 정보가 없어 가점 0점·기준 없음으로 복원됩니다') : null,
+      fromVersion < 6 && current.trips.some(t => t.preparation.length) ? h('p', { class: 'issue issue--warning', 'data-testid': 'restore-preparation-warning' },
+        '이 백업에는 출타 준비 체크가 없습니다. 복원하면 현재 준비 체크가 모두 지워지고 빈 체크로 시작합니다.') : null,
       lostReceived ? h('p', { class: 'issue issue--warning', 'data-testid': 'restore-received-warning' },
         `이 백업에는 받은 일정이 없어 지금 받은 일정 ${lostReceived}명이 지워집니다. 필요하면 나중에 다시 받으세요`) : null,
       h('p', { class: 'small' }, '복원하면 지금 기록이 백업 파일 내용으로 바뀝니다. 먼저 지금 기록을 받아 두세요.'),

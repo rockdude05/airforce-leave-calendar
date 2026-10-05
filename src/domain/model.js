@@ -1,6 +1,6 @@
 import { isDateOnly } from './dates.js';
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 export const RULE_VERSION = 'unit-user-2026-10-03';
 export const STORAGE_KEY = 'airforce-leave-calendar:v1';
 export const VISIT_PRINCIPLE_LIMIT = 7;

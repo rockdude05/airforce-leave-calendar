@@ -812,3 +812,27 @@ body.has-fallback-sheet { overflow: hidden; }
   .cal-head__nav .icon-btn { font-size: 22px; } /* 터치 영역 44px은 유지 */
   .cal-head__today { padding: 8px 8px; font-size: 13px; }
 }
+
+/* 신청 안내와 저장형 개인 준비 체크 */
+.trip-preparation { display: grid; gap: 12px; margin-block: 16px; }
+.application-window { padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.application-window h3 { margin: 0 0 8px; font-size: 1rem; }
+.application-window p { margin: 8px 0 0; overflow-wrap: anywhere; }
+.application-window__phase { font-weight: 700; }
+.preparation-panel { border: 1px solid var(--line); border-radius: 10px; padding: 0 12px 12px; }
+.preparation-panel summary { min-height: 48px; padding: 12px 0; font-weight: 700; cursor: pointer; }
+.preparation-panel:not([open]) { padding-bottom: 0; }
+.preparation-items fieldset { min-width: 0; border: 0; padding: 8px 0; margin: 0; }
+.preparation-items legend { font-weight: 700; font-size: .9rem; color: var(--slate); }
+.preparation-choice { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 0; cursor: pointer; }
+.preparation-choice input { flex: 0 0 auto; width: 20px; height: 20px; }
+.preparation-choice span { min-width: 0; overflow-wrap: anywhere; }
+
+.ojt-guidance { border-top: 1px solid var(--line); padding-top: 4px; }
+.ojt-guidance summary { cursor: pointer; min-height: 48px; padding: 12px 0; font-weight: 700; }
+.ojt-note { margin-block: 16px; }
+.ojt-note h4 { margin: 0 0 8px; font-size: 1rem; }
+.ojt-note p { margin: 8px 0; }
+
+.trip-card__preparation { display: grid; gap: 4px; margin-top: 8px; color: var(--slate); }
+.trip-preparation [hidden] { display: none; }
