@@ -256,7 +256,7 @@ export function renderMeritForm(root, { merit, onSave, onClose }) {
     perDayInput,
     h('p', { class: 'muted small' }, '부대 기준을 넣으세요. 비워 두면 포상휴가로 바꾸지 않습니다.')),
   preview,
-  h('p', { class: 'small muted', 'data-testid': 'merit-ojt' }, `${OJT_NOTICE}. ${OJT_GUIDANCE.find(n => n.id === 'reward-limit').text} (OJT 8쪽)`),
+  h('p', { class: 'small muted', 'data-testid': 'merit-ojt' }, `${OJT_NOTICE}. ${OJT_GUIDANCE.find(n => n.id === 'reward-limit').text}`),
   h('p', { class: 'muted small' }, '바뀐 포상휴가는 1일씩 휴가 목록에 들어갑니다(만료일은 비어 있으니 부대 기준대로 고치세요). 추가된 휴가를 지웠다면 가점을 직접 고쳐 주세요.'),
   out,
   h('div', { class: 'sheet__actions' },

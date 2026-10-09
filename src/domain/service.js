@@ -197,3 +197,17 @@ export function validateService(service) {
 
   return out;
 }
+
+/** 발생일이 명시된 일정 우선. 구버전은 기본 제목과 날짜가 모두 맞는 후보만 보여 주며 원문을 연결/변경하지 않는다.
+ * legacyFrom/Through는 탐색 범위이지 사용 기한·소진 규칙이 아니다.
+ */
+export function findPerformanceTrips(trips, perf) {
+  return trips.filter(t => {
+    if (t.status === 'cancelled') return false;
+    const segments = t.segments.filter(s => s.kind === 'performance');
+    if (!segments.length) return false;
+    if (t.performanceSource != null) return t.performanceSource === perf.sourceDate;
+    return t.title === `성과제외박 ${perf.n}회차` && isDateOnly(perf.legacyFrom) && isDateOnly(perf.legacyThrough)
+      && segments.every(s => s.start >= perf.legacyFrom && s.end <= perf.legacyThrough);
+  });
+}

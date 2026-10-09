@@ -2,7 +2,7 @@ import { preparationContext } from './preparation.js';
 
 // 제공된 OJT의 참고 내용. 검토일은 시행일이 아니며 계산·허가 규칙으로 쓰지 않는다.
 export const OJT_REVIEWED_ON = '2026-10-05';
-export const OJT_NOTICE = 'OJT 참고 안내 · 실제 일정은 부대 공지를 확인하세요';
+export const OJT_NOTICE = '참고 안내 · 실제 일정은 부대 공지를 확인하세요';
 export const OJT_GUIDANCE = Object.freeze([
   { id: 'outing-times', title: '외출·면회 시간', pages: [3, 7],
     text: '평일 일반 외출은 17:30~21:30, 휴일 면회외출은 08:30~21:30으로 안내되어 있습니다. 귀영은 21:30까지 정문 통과, 복귀 보고는 22:00까지로 구분됩니다. 전투휴무일·별도 지시는 부대에 확인하세요. 진료·시험외출은 별도 절차입니다.' },

@@ -19,20 +19,22 @@
 </head>
 <body>
   <a class="skip-link" href="#main">본문으로 건너뛰기</a>
-  <div id="update-banner" class="update-banner" hidden></div>
-  <div class="topbar-band">
-    <header class="topbar">
-      <span class="brand"><img src="./assets/icon-192.png" alt="" width="24" height="24">출타 장부</span>
-      <span class="topbar__right">
-        <span class="topbar__unit">작근단 수송대대</span>
-        <button type="button" class="help-btn" id="help-btn" data-testid="help">사용법</button>
-      </span>
-    </header>
+  <div id="app-scroll" class="app-scroll">
+    <div id="update-banner" class="update-banner" hidden></div>
+    <div class="topbar-band">
+      <header class="topbar">
+        <span class="brand"><img src="./assets/icon-192.png" alt="" width="24" height="24">출타 장부</span>
+        <span class="topbar__right">
+          <span class="topbar__unit">작근단 수송대대</span>
+          <button type="button" class="help-btn" id="help-btn" data-testid="help">사용법</button>
+        </span>
+      </header>
+    </div>
+    <main id="main" class="view" tabindex="-1">
+      <noscript><p class="notice">이 앱은 JavaScript가 필요합니다.</p></noscript>
+      <p class="muted boot">기록을 불러오는 중…</p>
+    </main>
   </div>
-  <main id="main" class="view" tabindex="-1">
-    <noscript><p class="notice">이 앱은 JavaScript가 필요합니다.</p></noscript>
-    <p class="muted boot">기록을 불러오는 중…</p>
-  </main>
   <nav class="tabs" id="tabs" aria-label="화면 전환">
     <button type="button" class="tab" data-view="calendar">달력</button>
     <button type="button" class="tab" data-view="grants">내 휴가</button>

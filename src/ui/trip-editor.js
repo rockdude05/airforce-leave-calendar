@@ -183,7 +183,7 @@ export function renderTripEditor(root, opts) {
   }
 
   function normalized() {
-    return { ...draft, title: draft.title.trim(), shareConfirmed: draft.shareConfirmed ?? false, preparation: preparationContext(draft.segments) ? normalizePreparation(draft.preparation, draft.segments) : [...draft.preparation] };
+    return { ...draft, title: draft.title.trim(), performanceSource: draft.segments.some(s => s.kind === 'performance') ? draft.performanceSource ?? null : null, shareConfirmed: draft.shareConfirmed ?? false, preparation: preparationContext(draft.segments) ? normalizePreparation(draft.preparation, draft.segments) : [...draft.preparation] };
   }
 
   function update(keepQuick = false) {
@@ -317,6 +317,7 @@ function newTrip(state, today, start) {
     transport: emptyTransport(),
     shareConfirmed: false,
     preparation: [],
+    performanceSource: null,
   };
 }
 
@@ -330,5 +331,6 @@ function tripFromDraft(d) {
     transport: emptyTransport(),
     shareConfirmed: false,
     preparation: [],
+    performanceSource: d.kind === 'performance' ? d.performanceSource ?? null : null,
   };
 }

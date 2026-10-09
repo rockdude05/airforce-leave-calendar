@@ -1,5 +1,5 @@
 import { h, fill, formatDate } from './dom.js';
-import { OJT_NOTICE, OJT_REVIEWED_ON, guidanceForTrip } from '../domain/ojt-guidance.js';
+import { OJT_NOTICE, guidanceForTrip } from '../domain/ojt-guidance.js';
 import { applicationWindow } from '../domain/application-window.js';
 import { preparationContext, preparationItems } from '../domain/preparation.js';
 
@@ -22,7 +22,7 @@ export function createPreparationPanel({ trip, grants, getToday, onToggle, onAsk
   const details = h('details', { class: 'preparation-panel', 'data-testid': 'preparation-panel' }, summary, notice, invalid, list,
     h('p', { class: 'small muted' }, '체크는 이 일정의 저장 버튼을 눌러야 보관됩니다. 확정 표시나 사용완료 상태는 자동으로 바뀌지 않습니다.'));
   const guidanceContent = h('div');
-  const guidance = h('details', { class: 'ojt-guidance', 'data-testid': 'ojt-guidance' }, h('summary', null, '관련 OJT 안내'), guidanceContent);
+  const guidance = h('details', { class: 'ojt-guidance', 'data-testid': 'ojt-guidance' }, h('summary', null, '출타 참고 안내'), guidanceContent);
   let guidanceKey = null;
   const element = h('div', { class: 'trip-preparation' }, application, details, guidance);
   let items = [];
@@ -66,9 +66,7 @@ export function createPreparationPanel({ trip, grants, getToday, onToggle, onAsk
 export function renderOjtNotes(notes, onAsk) {
   return h('div', { class: 'ojt-notes' },
     h('p', { class: 'small muted' }, OJT_NOTICE),
-    h('p', { class: 'small muted' }, `자료 검토일: ${formatDate(OJT_REVIEWED_ON, { year: true, weekday: false })} (시행일 아님)`),
     notes.map(n => h('section', { class: 'ojt-note' },
       h('h4', null, n.title), h('p', { class: 'small' }, n.text),
-      h('p', { class: 'small muted' }, `출처: 수송대대 외출외박휴가 OJT ${n.pages.join('·')}쪽`),
-      onAsk ? h('button', { type: 'button', class: 'btn btn--ghost btn--small', 'aria-label': `문의하기: OJT ${n.title}`, onClick: () => onAsk(`OJT: ${n.title}`, '질문') }, '이 안내 문의하기') : null)));
+      onAsk ? h('button', { type: 'button', class: 'btn btn--ghost btn--small', 'aria-label': `문의하기: ${n.title}`, onClick: () => onAsk(`참고 안내: ${n.title}`, '질문') }, '이 안내 문의하기') : null)));
 }

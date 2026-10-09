@@ -14,7 +14,7 @@ import { renderTripEditor } from './ui/trip-editor.js';
 import { renderSettings, renderRestoreConfirm } from './ui/settings.js';
 import { renderGuide } from './ui/guide.js';
 import { renderServiceForm, plainDot, autoGrantPlanKey } from './ui/service.js';
-import { computeSchedule, validateService } from './domain/service.js';
+import { computeSchedule, validateService, findPerformanceTrips } from './domain/service.js';
 import { addDays } from './domain/dates.js';
 import { APP_VERSION } from './version.js';
 import { sendFeedback, renderManualFeedback } from './feedback.js';
@@ -498,12 +498,15 @@ function addTrip(date) {
 }
 
 /** 성과제 날짜에서 성과제외박 일정 초안을 연다. 휴가 일수는 차감하지 않는다. */
-function addPerformanceTrip({ n, start, days }) {
+function addPerformanceTrip(perf) {
+  const { n, start, days, sourceDate } = perf;
   if (viewOnly()) return;
+  const existing = findPerformanceTrips(state.trips, perf);
+  if (existing.length) { openTrip(existing[0].id); return; }
   if (!days) return;
   openSheet((root) => renderTripEditor(root, {
     state, today, trip: null, onRefreshDate: refreshCurrentDate,
-    draft: { kind: 'performance', grantId: null, start, end: addDays(start, days - 1), title: `성과제외박 ${n}회차` },
+    draft: { kind: 'performance', performanceSource: sourceDate, grantId: null, start, end: addDays(start, days - 1), title: `성과제외박 ${n}회차` },
     onSave: tripSaveGuard(), onDelete: deleteTrip, onClose: () => closeSheet(), onAsk: askRule,
   }));
 }
@@ -819,7 +822,7 @@ function setView(next) {
   if (location.hash !== `#${next}`) history.replaceState(null, '', `#${next}`);
   render();
   main.focus({ preventScroll: true });
-  window.scrollTo(0, 0);
+  document.getElementById('app-scroll').scrollTo(0, 0);
 }
 
 function openGuide() {

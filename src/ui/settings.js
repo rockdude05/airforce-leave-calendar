@@ -45,7 +45,7 @@ export function renderSettings(root, { state, today, onEditService, onExport, on
       h('h3', { class: 'sub-title rule-group__title' }, '앱이 계산하는 것',
         h('span', { class: 'rule-group__count' }, `${RULE_TOPICS.calculated.length}`)),
       h('ul', { class: 'rule-list' }, ruleItems(RULE_TOPICS.calculated, onAsk)),
-      viewOnly ? null : h('section', { 'data-testid': 'ojt-settings' }, h('h3', { class: 'sub-title' }, 'OJT 참고 안내'), renderOjtNotes(OJT_GUIDANCE, onAsk)),
+      viewOnly ? null : h('section', { 'data-testid': 'ojt-settings' }, h('h3', { class: 'sub-title' }, '출타 참고 안내'), renderOjtNotes(OJT_GUIDANCE, onAsk)),
       h('h3', { class: 'sub-title rule-group__title' }, '부대 확인이 필요해 판정하지 않는 것',
         h('span', { class: 'rule-group__badge' }, '확인 필요')),
       h('p', { class: 'muted small rule-group__hint' }, '부대에서 들은 답이 있으면 문의로 알려 주세요. 확인되면 계산 규칙에 넣습니다.'),

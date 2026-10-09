@@ -44,7 +44,7 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; height: 100%; overflow: hidden; }
 body {
   margin: 0;
   font-family: var(--font);
@@ -55,8 +55,10 @@ body {
   font-variant-numeric: tabular-nums;
   word-break: keep-all;
   overflow-wrap: anywhere;
-  padding-bottom: calc(var(--tab-h) + env(safe-area-inset-bottom));
+  height: 100vh; height: 100dvh;
+  overflow: hidden; display: flex; flex-direction: column;
 }
+.app-scroll { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
 button, input, select, textarea { font: inherit; color: inherit; }
 img { display: block; }
 
@@ -132,14 +134,15 @@ p { margin: 0 0 8px; }
 .boot { padding: 40px 0; text-align: center; }
 
 .tabs {
-  position: fixed; inset: auto 0 0 0; z-index: 10;
+  /* 본문과 같은 레이아웃의 마지막 행: iOS fixed 레이어의 키보드 복귀 위치 잔류를 피한다. */
+  position: relative; flex: 0 0 auto; z-index: 10; width: 100%;
   display: grid; grid-template-columns: repeat(3, 1fr);
   height: calc(var(--tab-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
   background: var(--card);
 }
 @media (min-width: 600px) {
-  .tabs { left: 50%; right: auto; width: 560px; transform: translateX(-50%); border: 1px solid var(--line); border-bottom: 0; border-radius: 10px 10px 0 0; }
+  .tabs { max-width: 560px; margin-inline: auto; border: 1px solid var(--line); border-bottom: 0; border-radius: 10px 10px 0 0; }
 }
 .tabs[hidden] { display: none; }
 .tab {
@@ -753,7 +756,7 @@ legend { font-weight: 800; font-size: 15px; padding: 0; margin-bottom: 8px; }
 /* dialog(showModal) 미지원 브라우저(iOS 15.4 미만) 대체 시트 */
 .sheet--fallback { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; box-shadow: 0 0 0 100vmax rgba(15, 31, 61, 0.55); }
 .sheet--over.sheet--fallback { z-index: 70; }
-body.has-fallback-sheet { overflow: hidden; }
+body.has-fallback-sheet .app-scroll { overflow: hidden; }
 
 /* ---------------- 일정 공유 (1.4) ---------------- */
 .share-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 2px 10px; }

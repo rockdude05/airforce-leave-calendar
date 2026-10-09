@@ -7,6 +7,7 @@ import { SEGMENT_KIND_LABELS, TRIP_STATUS_LABELS } from '../domain/model.js';
 import { isActiveTrip } from '../domain/balances.js';
 import { receivedByDate } from '../domain/received.js';
 import { statusLabel } from '../domain/share-text.js';
+import { findPerformanceTrips } from '../domain/service.js';
 import { serviceMarks } from './service.js';
 
 /** 받은 사람 수가 많을 때 칸에 보이는 막대 수 */
@@ -204,7 +205,7 @@ function dayDetail({ state, today, selected, schedule, onOpenTrip, onAddTrip, on
   else if (!trips.length) empty = h('p', { class: 'muted' }, who.length ? '이 날 내 일정은 없습니다.' : '이 날 일정이 없습니다.');
   return h('section', { class: 'day-detail', 'aria-labelledby': 'day-detail-title' },
     h('h2', { id: 'day-detail-title', class: 'section-title' }, formatDate(selected)),
-    viewOnly ? null : serviceDetail(dayMarks, schedule, selected, onPerformanceTrip),
+    viewOnly ? null : serviceDetail(dayMarks, schedule, selected, onPerformanceTrip, state.trips, onOpenTrip),
     trips.length ? h('ul', { class: 'trip-list' }, trips.map((t) => tripCard(t, grantById, onOpenTrip, today))) : empty,
     peopleList(who),
     outToo.length ? h('p', { class: 'small people-same-day', 'data-testid': 'people-same-day' }, `${outToo.join('·')}도 이 날 나갑니다.`) : null,
@@ -260,22 +261,28 @@ function welcome({ welcome: w, onHelp, onRestore }) {
 }
 
 /** 선택한 날의 복무 일정(진급·전역·성과제)과 성과제 일정 만들기 */
-function serviceDetail(dayMarks, schedule, selected, onPerformanceTrip) {
+function serviceDetail(dayMarks, schedule, selected, onPerformanceTrip, trips, onOpenTrip) {
   const items = dayMarks.filter((mk) => !mk.lastPartial);
   const last = schedule?.lastPartial && schedule.lastPartial.end === selected ? schedule.lastPartial : null;
   if (!items.length && !last) return null;
-  const perfButton = (label, perf, disabledReason) => h('div', { class: 'svc-day__action' },
+  const perfButton = (label, perf, disabledReason) => {
+    const existing = findPerformanceTrips(trips, perf);
+    if (existing.length) return h('div', { class: 'svc-day__action' }, existing.map(t =>
+      h('button', { type: 'button', class: 'btn btn--ghost btn--block', 'data-testid': 'perf-existing-trip', onClick: () => onOpenTrip(t.id) },
+        existing.length === 1 ? '기존 성과제 일정 보기' : `일정 보기: ${t.title}`)));
+    return h('div', { class: 'svc-day__action' },
     h('button', { type: 'button', class: 'btn btn--ghost btn--block', 'data-testid': 'perf-trip', disabled: Boolean(disabledReason),
       'aria-describedby': disabledReason ? 'perf-trip-why' : null, onClick: () => onPerformanceTrip?.(perf) }, label),
     disabledReason ? h('p', { id: 'perf-trip-why', class: 'muted small' }, disabledReason) : null);
+  };
   return h('ul', { class: 'svc-day', 'aria-label': '복무 일정' },
     items.map((mk) => h('li', { class: `svc-day__item svc-day__item--${mk.kind}` },
       h('span', null, h('b', { class: `svc-mark svc-mark--${mk.kind}`, 'aria-hidden': 'true' }, mk.mark), mk.label),
-      mk.perf ? perfButton('이 성과제로 일정 만들기', { n: mk.perf.n, start: mk.perf.date, days: mk.perf.days }, null) : null)),
+      mk.perf ? perfButton('성과제외박 일정 추가', { n: mk.perf.n, start: mk.perf.date, days: mk.perf.days, sourceDate: mk.perf.date, legacyFrom: mk.perf.date, legacyThrough: schedule.performances[mk.perf.n] ? addDays(schedule.performances[mk.perf.n].date, -1) : schedule.discharge }, null) : null)),
     last ? h('li', { class: 'svc-day__item svc-day__item--perf' },
       h('span', null, h('b', { class: 'svc-mark svc-mark--perf', 'aria-hidden': 'true' }, '성'),
         `마지막 성과제 (${shortDate(last.start)}~${shortDate(last.end)}) · ${last.days === null ? '일수 확인 필요' : last.days === 0 ? '지급 없음' : `${last.days}일`}`),
-      perfButton('이 성과제로 일정 만들기',
-        { n: schedule.performances.length + 1, start: last.days ? addDays(last.end, 1 - last.days) : last.end, days: last.days },
+      perfButton('성과제외박 일정 추가',
+        { n: schedule.performances.length + 1, start: last.days ? addDays(last.end, 1 - last.days) : last.end, days: last.days, sourceDate: last.end, legacyFrom: last.start, legacyThrough: last.end },
         last.days === null ? '설정 → 내 복무 정보에서 일수를 확인해 입력하면 만들 수 있습니다.' : last.days === 0 ? '지급 없음으로 입력되어 있습니다.' : null)) : null);
 }
