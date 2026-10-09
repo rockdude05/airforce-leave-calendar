@@ -267,7 +267,9 @@ function serviceDetail(dayMarks, schedule, selected, onPerformanceTrip, trips, o
   if (!items.length && !last) return null;
   const perfButton = (label, perf, disabledReason) => {
     const existing = findPerformanceTrips(trips, perf);
-    if (existing.length) return h('div', { class: 'svc-day__action' }, existing.map(t =>
+    if (existing.length) return h('div', { class: 'svc-day__action' },
+      existing.some(t => t.performanceSource == null) ? h('p', { class: 'small muted' }, '이 기간에 등록한 성과제 일정입니다.') : null,
+      existing.map(t =>
       h('button', { type: 'button', class: 'btn btn--ghost btn--block', 'data-testid': 'perf-existing-trip', onClick: () => onOpenTrip(t.id) },
         existing.length === 1 ? '기존 성과제 일정 보기' : `일정 보기: ${t.title}`)));
     return h('div', { class: 'svc-day__action' },
