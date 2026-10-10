@@ -11,6 +11,7 @@ import { h, fill } from './ui/dom.js';
 import { renderCalendar } from './ui/calendar.js';
 import { renderGrants, renderGrantForm, renderVisitForm, renderMeritForm } from './ui/grants.js';
 import { renderTripEditor } from './ui/trip-editor.js';
+import { renderPlanSheet } from './ui/plan.js';
 import { renderSettings, renderRestoreConfirm } from './ui/settings.js';
 import { renderGuide } from './ui/guide.js';
 import { renderServiceForm, plainDot, autoGrantPlanKey } from './ui/service.js';
@@ -258,11 +259,16 @@ function openManualFeedback(rule, type) {
     openSheet((root) => { renderManualFeedback(root, { rule, type, onClose: () => closeSheet({ force: true }) }); return null; }, { kind: 'view' });
     return;
   }
+  openOver('feedback-over', (over, close) => renderManualFeedback(over, { rule, type, onClose: close }));
+}
+
+/** 열린 시트 위에 겹친 대화상자. 닫으면 원래 시트와 초점으로 돌아간다. */
+function openOver(testId, renderFn) {
   const back = document.activeElement;
   const over = document.createElement('dialog');
   over.className = 'sheet sheet--over';
   over.setAttribute('aria-modal', 'true');
-  over.dataset.testid = 'feedback-over';
+  over.dataset.testid = testId;
   const close = () => {
     hideDialog(over);
     over.remove();
@@ -270,7 +276,7 @@ function openManualFeedback(rule, type) {
   };
   over.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
   document.body.append(over);
-  renderManualFeedback(over, { rule, type, onClose: close });
+  renderFn(over, close);
   showDialog(over);
 }
 
@@ -473,8 +479,9 @@ function openTrip(id) {
   const trip = state.trips.find((t) => t.id === id) ?? null;
   const base = trip ? JSON.stringify(trip) : null;
   const guardedSave = tripSaveGuard();
+  if (!trip) { toast('다른 창에서 삭제된 일정입니다.', { error: true }); return; }
   openSheet((root) => renderTripEditor(root, {
-    state, today, trip, onRefreshDate: refreshCurrentDate,
+    state, today, trip, onRefreshDate: refreshCurrentDate, onOpenPlan: (tid) => switchSheet(() => openPlan(tid)),
     onSave: (c, replaceId, o) => {
       const stale = staleCheck(state.trips, replaceId, base);
       return stale ? { ok: false, error: stale } : guardedSave(c, replaceId, o);
@@ -486,6 +493,46 @@ function openTrip(id) {
     onClose: () => closeSheet(),
     onAsk: askRule,
   }));
+}
+
+/** 시트끼리 옮겨 갈 때: 작성 중이면 한 번만 묻고, 거절하면 지금 시트를 그대로 둔다. */
+function switchSheet(next) {
+  if (sheetHandle?.isDirty() && !window.confirm('저장하지 않은 내용을 버리고 이동할까요?')) return;
+  next();
+}
+
+/** 휴가 계획서. 저장된 일정에만 붙고, 열 때의 일정과 지금 기록이 다르면(다른 창) 저장하지 않는다. */
+function openPlan(id) {
+  if (viewOnly()) return;
+  const trip = state.trips.find((t) => t.id === id);
+  if (!trip) { toast('다른 창에서 삭제된 일정입니다.', { error: true }); return; }
+  let base = JSON.stringify(trip);
+  openSheet((root) => renderPlanSheet(root, {
+    trip, getToday: () => today,
+    onSave: (plan) => {
+      refreshCurrentDate();
+      const stale = staleCheck(state.trips, id, base);
+      if (stale) return { ok: false, error: stale };
+      const updated = { ...state.trips.find((t) => t.id === id), plan };
+      const r = commit({ ...state, trips: state.trips.map((t) => (t.id === id ? updated : t)) });
+      if (r.ok) base = JSON.stringify(updated);
+      return r;
+    },
+    onCopy: (text) => copyPlan(text),
+    onEditTrip: () => switchSheet(() => openTrip(id)),
+    onClose: () => closeSheet(),
+  }));
+}
+
+/** 계획서 글 복사. 시트를 닫거나 바꾸지 않는다 — 실패하면 그 위에 겹친 복사 상자를 띄운다. */
+async function copyPlan(text) {
+  const serial = sheetSerial;
+  const r = await copyText(text);
+  if (serial !== sheetSerial) return 'stale';
+  if (r === 'manual') {
+    openOver('plan-over', (over, close) => renderManualText(over, { title: '계획서 글', note: '자동으로 복사하지 못했습니다. 아래 글을 길게 눌러 복사해 주세요.', text, testId: 'plan-manual-text', onClose: close }));
+  }
+  return r;
 }
 
 function addTrip(date) {
@@ -894,6 +941,7 @@ function render() {
       },
       onMonthChange: (m) => { month = m; if (!selected.startsWith(m)) selected = m === today.slice(0, 7) ? today : `${m}-01`; render(); },
       onOpenTrip: openTrip,
+      onOpenPlan: ro ? null : openPlan,
       onAddTrip: addTrip,
       onShare: ro ? null : openShare,
       onReceive: () => openReceiveInput(),

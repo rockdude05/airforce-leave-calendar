@@ -56,11 +56,19 @@ export function saveState(storage, state, { expectedRaw } = {}) {
       return { ok: false, conflict: true, error: '다른 창에서 기록이 바뀌어 저장하지 않았습니다. 최신 기록을 불러왔으니 다시 시도해 주세요.' };
     }
     const raw = JSON.stringify(state);
+    // 저장한 기록은 언제나 백업 파일로 되살릴 수 있어야 한다 — 복원 한도를 넘는 기록은 저장하지 않는다
+    if (byteLength(serializeBackup(state)) > MAX_BACKUP_BYTES) {
+      return { ok: false, error: '기록이 너무 많아 저장하지 않았습니다. 백업 파일 한도(2MB)를 넘습니다. 지난 휴가 계획서의 할 일이나 메모를 줄여 주세요.' };
+    }
     storage.setItem(STORAGE_KEY, raw);
     return { ok: true, raw };
   } catch (e) {
     return { ok: false, error: describe(e) };
   }
+}
+
+function byteLength(text) {
+  return typeof TextEncoder !== 'undefined' ? new TextEncoder().encode(text).length : text.length;
 }
 
 function describe(e) {
@@ -79,8 +87,7 @@ export function serializeBackup(state, exportedAt = new Date().toISOString()) {
  * @param {string} text
  */
 export function parseBackup(text) {
-  const bytes = typeof TextEncoder !== 'undefined' ? new TextEncoder().encode(text).length : text.length;
-  if (bytes > MAX_BACKUP_BYTES) {
+  if (byteLength(text) > MAX_BACKUP_BYTES) {
     return { ok: false, issues: [{ code: 'BACKUP_TOO_LARGE', severity: 'error', message: '백업 파일이 2MB를 넘습니다.' }] };
   }
   let parsed;

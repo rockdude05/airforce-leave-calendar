@@ -839,3 +839,188 @@ body.has-fallback-sheet .app-scroll { overflow: hidden; }
 
 .trip-card__preparation { display: grid; gap: 4px; margin-top: 8px; color: var(--slate); }
 .trip-preparation [hidden] { display: none; }
+
+/* ---------------- 휴가 계획서 (1.6) ----------------
+   비행 일정표(itinerary): 남색 요약판 → 날짜 바로가기 → 일차별 타임라인. 저장 단추는 시트 아래에 늘 보인다. */
+input[type="time"] {
+  min-height: 48px; padding: 10px 8px; border: 1px solid var(--steel); border-radius: 6px; background: #fff;
+  box-shadow: inset 0 1px 2px rgba(15, 31, 61, 0.08); font-size: 16px; -webkit-appearance: none; appearance: none;
+}
+.sheet__body.plan { padding-top: 22px; background: var(--paper); }
+
+/* 요약판: 출타증과 같은 남색 동체 + 터닝 무늬. 글자는 흰색만 (대비 12:1 이상) */
+.plan-hero {
+  position: relative; isolation: isolate; overflow: hidden;
+  display: grid; gap: 4px; padding: 16px 16px 14px 24px; margin-bottom: 12px;
+  border-radius: 10px; color: #fff;
+  background:
+    repeating-radial-gradient(circle at 92% 0, rgba(255, 255, 255, 0) 0 6px, rgba(159, 201, 238, 0.10) 6.5px 7.5px, rgba(255, 255, 255, 0) 8px 12px),
+    linear-gradient(135deg, var(--navy-2), var(--ink) 70%);
+  box-shadow: 0 14px 28px -18px rgba(15, 31, 61, 0.7);
+}
+.plan-hero::before {   /* 왼쪽 세로 치트라인 */
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 10px;
+  background: linear-gradient(90deg, transparent 0 4px, var(--sky) 4px 7px, #fff 7px 8px, var(--sky-line) 8px), var(--camo) 0 0 / 96px 96px;
+  background-size: 100% 100%, 96px 96px;
+}
+.plan-hero__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.plan-hero__label { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #DCE7F6; }
+.plan-hero__dday {
+  font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
+  padding: 1px 8px; border-radius: 3px; background: #fff; color: var(--ink); box-shadow: 3px 0 0 -0.5px var(--sky) inset;
+}
+.plan-hero__dday:empty { display: none; }
+.plan-hero__title { font-size: 20px; letter-spacing: -0.02em; line-height: 1.3; overflow-wrap: anywhere; }
+.plan-hero__route { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.03em; }
+.plan-hero__plane { font-size: 15px; color: var(--sky); }
+.plan-hero__dest { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
+.plan-hero__dest-label { flex: none; font-size: 11px; letter-spacing: 0.1em; color: #DCE7F6; padding-left: 8px; border-left: 2px solid var(--sky); }
+.plan-meter { display: flex; gap: 3px; margin: 8px 0 2px; }
+.plan-meter__day { flex: 1 1 0; height: 6px; border-radius: 2px; background: rgba(255, 255, 255, 0.18); }
+.plan-meter__day.is-on { background: var(--sky); }
+.plan-meter__day.is-today { box-shadow: 0 0 0 1.5px #fff; }
+.plan-hero__stats { display: grid; grid-template-columns: repeat(3, 1fr); margin: 8px 0 0; padding-top: 10px; border-top: 1px dashed rgba(220, 231, 246, 0.35); }
+.plan-hero__stats div { display: grid; gap: 0; }
+.plan-hero__stats div + div { padding-left: 12px; border-left: 1px solid rgba(220, 231, 246, 0.2); }
+.plan-hero__stats dt { font-size: 11px; letter-spacing: 0.08em; color: #DCE7F6; }
+.plan-hero__stats dd { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+
+/* 날짜 바로가기: 스크롤해도 위에 붙어 있다 */
+.plan-nav {
+  /* 본문 위 여백(22px)만큼 끌어올려 제목 바로 아래 붙인다. 위 12px은 제목 아래 무늬 띠(10px)가 덮는 자리 */
+  position: sticky; top: -22px; z-index: 3;
+  display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+  margin: 0 -16px 12px; padding: 12px 16px 8px; background: var(--paper);
+  border-bottom: 1px solid var(--line-soft);
+}
+.plan-nav::-webkit-scrollbar { display: none; }
+.plan-nav__chip {
+  position: relative; flex: none; display: grid; justify-items: start; gap: 0;
+  min-width: 64px; min-height: 48px; padding: 6px 12px 6px 10px;
+  border: 1px solid var(--steel); border-radius: 6px; background: var(--card); color: var(--ink);
+  text-align: left; cursor: pointer;
+}
+.plan-nav__no { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; color: var(--slate); }
+.plan-nav__date { font-size: 14px; font-weight: 700; white-space: nowrap; }
+.plan-nav__dot { position: absolute; top: 7px; right: 7px; width: 6px; height: 6px; border-radius: 50%; background: transparent; }
+.plan-nav__chip.has-items .plan-nav__dot { background: var(--sky-line); }
+.plan-nav__chip.is-today { border-color: var(--ink); box-shadow: inset 0 -3px 0 var(--sky); }
+.plan-nav__chip--wish { border-style: dashed; }
+
+/* 기본 정보 */
+.plan-info { margin-bottom: 12px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.plan-info summary { display: flex; align-items: baseline; gap: 10px; min-height: 48px; padding: 12px 0; font-weight: 800; cursor: pointer; }
+.plan-info__hint { color: var(--slate); font-weight: 600; }
+.plan-info[open] { padding-bottom: 4px; }
+.plan-info__grid { display: grid; grid-template-columns: 1fr; gap: 0 10px; }
+@media (min-width: 480px) { .plan-info__grid { grid-template-columns: 1fr 1fr; } }
+
+/* 일차 카드 + 타임라인 */
+.plan-days { display: grid; gap: 12px; margin-bottom: 12px; }
+.plan-day {
+  scroll-margin-top: 72px;
+  padding: 12px 14px 10px; border: 1px solid var(--line); border-left: 4px solid var(--air); border-radius: 10px; background: var(--card);
+}
+.plan-day.is-today { border-color: var(--ink); border-left-color: var(--ink); box-shadow: inset 4px 0 0 var(--sky); }
+.plan-day--wish { border-left-color: var(--sky-line); border-style: dashed; border-left-style: solid; }
+.plan-day--outside { border-left-color: var(--warn-ink); }
+.plan-day__head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.plan-day__no { flex: none; font-family: var(--mono); font-size: 12px; font-weight: 800; color: #fff; background: var(--ink); padding: 1px 6px; border-radius: 3px; }
+.plan-day__date { margin: 0; font-size: 16px; letter-spacing: -0.01em; }
+.plan-day__today { flex: none; font-size: 12px; font-weight: 800; color: var(--air); border: 1px solid currentColor; padding: 0 6px; border-radius: 3px; }
+.plan-day__count { margin-left: auto; font-size: 13px; color: var(--slate); font-weight: 600; }
+
+.plan-timeline { position: relative; list-style: none; margin: 4px 0 4px; padding: 0; }
+.plan-timeline::before {   /* 세로 항로선 */
+  content: ""; position: absolute; left: 21px; top: 22px; bottom: 22px; border-left: 2px dotted var(--steel);
+}
+.plan-item { position: relative; display: grid; grid-template-columns: 44px 52px minmax(0, 1fr); align-items: center; min-height: 48px; }
+.plan-item__check { position: relative; z-index: 1; display: grid; place-items: center; width: 44px; height: 44px; cursor: pointer; }
+.plan-item__check input {
+  width: 22px; height: 22px; margin: 0; border-radius: 50%; border: 2px solid var(--air); background: var(--card);
+  -webkit-appearance: none; appearance: none; cursor: pointer; display: grid; place-items: center;
+}
+.plan-item__check input:checked { background: var(--air); }
+.plan-item__check input:checked::after { content: ""; width: 9px; height: 5px; margin-top: -2px; border: solid #fff; border-width: 0 0 2px 2px; transform: rotate(-45deg); }
+.plan-item__time { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--ink); }
+.plan-item__time.is-empty { color: var(--steel); }
+.plan-item__body {
+  display: grid; gap: 0; min-height: 48px; padding: 6px 8px; margin: 2px 0;
+  border: 0; border-radius: 6px; background: none; text-align: left; cursor: pointer; min-width: 0;
+}
+.plan-item__body:active { background: var(--sky-wash); }
+.plan-item__text { font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
+.plan-item__place { font-size: 13px; color: var(--slate); overflow-wrap: anywhere; }
+.plan-item__place::before { content: "◦ "; color: var(--sky-line); }
+.plan-item.is-done .plan-item__text { text-decoration: line-through; color: var(--slate); font-weight: 600; }
+.plan-item--editing { display: block; }
+
+.plan-add {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 6px 0;
+  border: 0; background: none; color: var(--air); font-weight: 700; font-size: 15px; text-align: left; cursor: pointer;
+}
+.plan-add__plus {
+  display: grid; place-items: center; width: 22px; height: 22px; margin: 0 11px;
+  border: 2px dashed var(--air); border-radius: 50%; font-size: 15px; line-height: 1;
+}
+
+.plan-composer { display: grid; gap: 8px; margin: 6px 0 4px; padding: 10px; border-radius: 8px; background: var(--sky-wash); border: 1px solid #C5D9EF; }
+.plan-composer__row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; }
+.plan-composer__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.plan-composer__actions .btn--primary { flex: 1 1 auto; }
+.plan-composer [hidden] { display: none; }
+
+.plan-memo textarea { background: var(--card); }
+.plan-private { margin: 4px 0 0; }
+.plan-more { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+
+/* 시트 아래 고정 단추 줄 */
+.plan-actions {
+  flex: none; display: grid; gap: 6px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: var(--card); border-top: 1px solid var(--line);
+  box-shadow: 0 -8px 16px -12px rgba(15, 31, 61, 0.4);
+}
+.plan-actions__row { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
+.plan-status { margin: 0; color: var(--slate); font-weight: 600; }
+.plan-status:empty { display: none; }
+.plan-status.is-error { color: var(--danger); }
+
+/* 입구: 출타증 아래 띠 · 일정 카드 꼬리표 · 편집기 */
+.plan-strip {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  width: 100%; min-height: 48px; margin-top: 8px; padding: 8px 12px 8px 14px;
+  border: 1px solid #B9C4D3; border-left: 4px solid var(--sky-line); border-radius: 8px;
+  background: var(--card); color: var(--ink); text-align: left; cursor: pointer;
+}
+.plan-strip--today { border-left-color: var(--ink); background: var(--sky-wash); }
+.plan-strip__label { font-size: 12px; font-weight: 800; letter-spacing: 0.06em; color: var(--air); white-space: nowrap; }
+.plan-strip__text { min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-strip__go { font-size: 20px; line-height: 1; color: var(--slate); }
+
+.trip-list > li:has(.trip-card__plan) .trip-card { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.trip-card__plan {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  width: 100%; min-height: 44px; margin-top: -1px; padding: 6px 12px 6px 14px;
+  border: 1px solid var(--line); border-top: 1px dashed var(--steel); border-left: 5px solid var(--sky-line);
+  border-radius: 0 0 8px 8px; background: #F7F9FC; color: var(--ink); text-align: left; cursor: pointer; font-size: 14px;
+}
+.trip-card__plan-label { font-weight: 800; color: var(--air); font-size: 13px; }
+.trip-card__plan-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--slate); }
+.trip-card__plan.is-written .trip-card__plan-text { color: var(--ink); font-weight: 600; }
+
+.trip-plan-entry {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-block: 0 16px; padding: 12px 14px; border: 1px solid var(--line); border-left: 4px solid var(--sky-line); border-radius: 10px; background: var(--card);
+}
+.trip-plan-entry h3 { margin: 0 0 2px; font-size: 1rem; }
+.trip-plan-entry p { margin: 0; }
+.trip-plan-entry__text { min-width: 0; }
+.trip-plan-entry .btn { flex: none; }
+p.trip-plan-entry--new { display: block; border-left-color: var(--line); }
+
+@media (max-width: 360px) {
+  .plan-item { grid-template-columns: 44px 46px minmax(0, 1fr); }
+  .plan-composer__row { grid-template-columns: 100px minmax(0, 1fr); }
+  .plan-hero__route { font-size: 22px; }
+}

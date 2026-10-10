@@ -5,6 +5,7 @@ import { validateTrip, LIMITS, transportRule, TRANSPORT_RULE_TEXT } from '../dom
 import { calculateBalances, inGrantWindow } from '../domain/balances.js';
 import { preparationContext, normalizePreparation } from '../domain/preparation.js';
 import { createPreparationPanel } from './preparation.js';
+import { planLabel, planSummaryText } from './plan.js';
 import { ISSUE_TOPIC } from '../feedback.js';
 
 /**
@@ -271,11 +272,22 @@ export function renderTripEditor(root, opts) {
       h('input', { id: 'trip-title', type: 'text', value: draft.title, maxlength: LIMITS.title, placeholder: '예: 첫 정기휴가', autocomplete: 'off', onInput: (e) => { draft.title = e.target.value; update(); } })),
     h('fieldset', { class: 'seg-ctrl' }, h('legend', null, '상태'),
       statusRadio('planned'), statusRadio('completed'), original ? statusRadio('cancelled') : null),
-    segBox, summaryBox, preparation.element, transportBox, issueBox,
+    segBox, summaryBox, preparation.element, planEntry(), transportBox, issueBox,
     h('div', { class: 'sheet__actions' },
       h('button', { type: 'submit', class: 'btn btn--primary', 'data-testid': 'save-trip' }, isNew ? '일정 저장' : '변경 저장'),
       h('button', { type: 'button', class: 'btn btn--ghost', onClick: () => opts.onClose() }, '닫기')),
     quick);
+
+  /** 휴가 계획서 입구. 계획서는 저장된 일정에만 붙는다 — 이동하면 이 편집 시트는 닫힌다(작성 중이면 확인). */
+  function planEntry() {
+    if (!opts.onOpenPlan) return null;
+    if (!original) return h('p', { class: 'small muted trip-plan-entry trip-plan-entry--new' }, '일정을 저장하면 날짜별 할 일을 적는 휴가 계획서를 쓸 수 있습니다.');
+    return h('section', { class: 'trip-plan-entry', 'aria-labelledby': 'trip-plan-entry-title' },
+      h('div', { class: 'trip-plan-entry__text' },
+        h('h3', { id: 'trip-plan-entry-title' }, planLabel(original)),
+        h('p', { class: 'small muted' }, original.plan ? planSummaryText(original) : '출타 동안 할 일을 날짜별로 정리합니다.')),
+      h('button', { type: 'button', class: 'btn btn--ghost btn--small', 'data-testid': 'open-plan', onClick: () => opts.onOpenPlan(original.id) }, original.plan ? '계획서 열기' : '계획서 쓰기'));
+  }
 
   fill(root, 
     h('header', { class: 'sheet__head' },
@@ -318,6 +330,7 @@ function newTrip(state, today, start) {
     shareConfirmed: false,
     preparation: [],
     performanceSource: null,
+    plan: null,
   };
 }
 
@@ -332,5 +345,6 @@ function tripFromDraft(d) {
     shareConfirmed: false,
     preparation: [],
     performanceSource: d.kind === 'performance' ? d.performanceSource ?? null : null,
+    plan: null,
   };
 }
