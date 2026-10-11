@@ -443,7 +443,7 @@ div.pass__main { cursor: default; }
    제목 줄은 스크롤 밖에 두고 본문(.sheet__body)만 스크롤한다. 애니메이션은 쓰지 않는다. */
 .sheet {
   width: 100%; max-width: 560px; height: 100vh; height: 100dvh; height: var(--vvh, 100dvh); max-height: 100vh; max-height: 100dvh; max-height: var(--vvh, 100dvh);
-  margin: 0 auto; padding: 0; border: 0;
+  margin: var(--vvt, 0px) auto 0; padding: 0; border: 0;
   background: var(--card); color: var(--ink);
   overflow: hidden;
 }
@@ -754,7 +754,7 @@ legend { font-weight: 800; font-size: 15px; padding: 0; margin-bottom: 8px; }
 .transport-rule--none-regular, .transport-rule--none-performance-only { background: #FFF4D6; color: #6B4A00; font-weight: 600; }
 
 /* dialog(showModal) 미지원 브라우저(iOS 15.4 미만) 대체 시트 */
-.sheet--fallback { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; box-shadow: 0 0 0 100vmax rgba(15, 31, 61, 0.55); }
+.sheet--fallback { position: fixed; inset: 0; top: var(--vvt, 0px); bottom: auto; height: var(--vvh, 100dvh); margin-top: 0; z-index: 60; display: flex; flex-direction: column; box-shadow: 0 0 0 100vmax rgba(15, 31, 61, 0.55); }
 .sheet--over.sheet--fallback { z-index: 70; }
 body.has-fallback-sheet .app-scroll { overflow: hidden; }
 

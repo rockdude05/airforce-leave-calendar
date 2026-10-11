@@ -181,12 +181,25 @@ function hideDialog(d) {
   if (!document.querySelector('.sheet--fallback')) document.body.classList.remove('has-fallback-sheet');
 }
 
-/** 키보드가 올라오면 시트 높이를 실제 보이는 화면(visualViewport)에 맞춘다 */
+/**
+ * 키보드가 올라오면 시트를 실제 보이는 화면(visualViewport)에 맞춘다.
+ * iOS는 아래쪽 입력 칸에 초점이 가면 보이는 화면을 아래로 밀어(offsetTop) 시트 머리가 위로 잘리고
+ * 시트 아래로 뒤 화면이 비친다(2026-10-11 휴가 계획서 사용자 보고). 높이와 함께 위치도 따라 내린다.
+ */
 function fitSheetToViewport() {
   const vv = window.visualViewport;
-  if (vv) document.documentElement.style.setProperty('--vvh', `${Math.round(vv.height)}px`);
+  if (!vv) return;
+  const root = document.documentElement.style;
+  root.setProperty('--vvh', `${Math.round(vv.height)}px`);
+  root.setProperty('--vvt', `${Math.max(0, Math.round(vv.offsetTop))}px`);
 }
-window.visualViewport?.addEventListener('resize', fitSheetToViewport);
+/** 줄어든 시트 안에서 입력 중인 칸이 가려지지 않게 시트 본문만 스크롤한다 */
+function keepFocusVisible() {
+  const el = document.activeElement;
+  if (el instanceof HTMLElement && el.closest('.sheet__body') && el.matches('input, select, textarea')) el.scrollIntoView({ block: 'nearest' });
+}
+window.visualViewport?.addEventListener('resize', () => { fitSheetToViewport(); keepFocusVisible(); });
+window.visualViewport?.addEventListener('scroll', fitSheetToViewport);
 fitSheetToViewport();
 
 /** 열린 시트 종류: 'edit'(내 기록 편집·공유) | 'view'(받기·안내·복사 상자). 보기 전용으로 바뀌면 edit만 닫는다. */
