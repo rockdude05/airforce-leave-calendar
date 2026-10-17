@@ -39,7 +39,7 @@ export function loadState(storage, today) {
 
 /**
  * 유효한 전체 상태만 저장한다. 실패하면 기존 값은 그대로 남는다.
- * expectedRaw를 주면 저장 직전 값이 그와 같을 때만 쓴다 — 다른 창(홈 화면 앱과 브라우저 탭 등)이
+ * expectedRaw를 주면 저장 직전 값이 그와 같을 때만 쓴다 — 같은 저장소를 쓰는 다른 창이
  * 그사이 바꾼 기록을 오래된 화면 상태로 덮어쓰지 않기 위해서다.
  * @param {{getItem?(k:string):string|null, setItem(k:string,v:string):void}} storage
  * @param {any} state

@@ -424,6 +424,7 @@ div.pass__main { cursor: default; }
 .rules li { margin-bottom: 4px; }
 .rules--open li::marker { content: "? "; color: var(--warn-ink); font-weight: 800; }
 .notice { padding: 12px 14px; border-radius: 6px; background: var(--warn-bg); color: var(--warn-ink); }
+.safari-transfer-guide > summary { min-height: 48px; padding: 12px 0; font-weight: 700; cursor: pointer; }
 .notice--update { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--sky-wash); color: var(--ink); }
 .app-version { margin-top: 28px; }
 .compare { display: grid; grid-template-columns: auto 1fr; gap: 0; margin: 0 0 12px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }

@@ -12,6 +12,7 @@ import { NICKNAME_LIMIT } from '../domain/model.js';
  * @param {HTMLElement} root
  */
 export function renderSettings(root, { state, today, onEditService, onExport, onImportFile, importIssues, install, offline, update, appVersion, onAsk, onRenameReceived, onRemoveReceived, viewOnly = false, onToggleViewOnly }) {
+  const safariTransfer = install.platform === 'ios' && !install.inApp && (install.standalone || install.safari);
   const fileInput = h('input', {
     type: 'file', id: 'restore-file', accept: 'application/json,.json', class: 'sr-only',
     onChange: (e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onImportFile(f); },
@@ -23,8 +24,17 @@ export function renderSettings(root, { state, today, onEditService, onExport, on
       h('button', { type: 'button', class: 'btn btn--primary btn--small', onClick: update.apply }, '새 버전 적용')) : null,
     viewOnly ? null : serviceSection(state.service, today, onEditService),
     h('section', { 'aria-labelledby': 'backup-title' },
-      h('h2', { id: 'backup-title', class: 'section-title' }, '기록 백업과 복원'),
+      h('h2', { id: 'backup-title', class: 'section-title', tabindex: '-1' }, '기록 백업과 복원'),
       h('p', { class: 'small' }, '기록은 이 휴대폰의 이 브라우저에만 저장됩니다. 브라우저 데이터를 지우거나 휴대폰을 바꾸면 사라지니 가끔 백업 파일을 받아 두세요.'),
+      safariTransfer ? h('details', { class: 'notice small safari-transfer-guide', open: state.grants.length === 0 && state.trips.length === 0, 'data-testid': 'safari-transfer-guide' },
+        h('summary', null, install.standalone ? 'Safari 기록을 이 앱으로 가져오기' : 'Safari 기록을 홈 화면 앱으로 옮기기'),
+        h('p', null, '같은 아이폰·아이패드여도 Safari와 홈 화면 앱은 기록이 따로 저장되며 자동으로 동기화되지 않습니다. 홈 화면에 추가하는 것만으로 기존 기록이 옮겨지지 않습니다.'),
+        h('ol', { class: 'rules' },
+          h('li', null, '기록이 있는 Safari의 출타 장부에서 설정 → 백업 파일 받기를 누르세요. 내려받은 JSON 파일을 파일 앱에 보관하세요. 미리보기만 열리면 공유 → 파일에 저장을 누르세요.'),
+          h('li', null, '홈 화면의 출타 장부 아이콘으로 앱을 열고 설정 → 백업에서 복원을 누른 뒤, 파일 앱에 보관한 JSON 파일을 고르세요.'),
+          h('li', null, '파일 내용과 지금 기록을 비교하세요. 홈 화면 앱에도 기록이 있다면 먼저 지금 기록 백업 받기로 보관한 뒤, 덮어쓰기 확인을 하고 복원하세요.')),
+        h('p', null, '복원은 기록을 합치지 않고 백업 내용으로 전체 교체합니다. Safari 원본은 그대로 남고 이후 변경도 서로 반영되지 않으니, 옮긴 뒤에는 한 곳에서 계속 쓰세요. 반대 방향으로 옮길 때도 같은 백업·복원 절차를 씁니다.'),
+        h('p', null, '일정 공유 QR·링크는 날짜만 전달하므로 내 휴가 장부 전체를 옮길 수 없습니다.')) : null,
       h('p', { class: 'muted small' }, viewOnly
         ? `현재 기록: 받은 일정 ${(state.received ?? []).length}명 (숨긴 내 기록도 백업 파일에 그대로 들어갑니다)`
         : `현재 기록: 휴가 ${state.grants.length}건, 일정 ${state.trips.length}건, 받은 일정 ${(state.received ?? []).length}명`),

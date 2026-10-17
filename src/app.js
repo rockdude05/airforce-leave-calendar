@@ -126,7 +126,7 @@ let lastLoadFailure = null;
 /** 마지막 다시 읽기에서 보기 전용 전환 때문에 편집 시트를 닫았는지 (storage 안내 문구 선택용) */
 let lastReloadClosedEdit = false;
 
-/** 다른 창(홈 화면 앱·브라우저 탭)이 바꾼 기록을 다시 읽는다. 쓸 수 있는 기록을 읽었으면 true. */
+/** 같은 저장소를 쓰는 다른 창이 바꾼 기록을 다시 읽는다. iOS Safari와 홈 화면 앱 사이에는 적용되지 않는다. */
 function reloadFromStorage() {
   const result = loadState(storage, today);
   if (result.kind === 'ok' || result.kind === 'empty') {
@@ -796,13 +796,14 @@ function installInfo() {
   const ua = navigator.userAgent;
   const inAppMatch = [
     [/KAKAOTALK/i, '카카오톡'], [/Instagram/i, '인스타그램'], [/FBAN|FBAV/i, '페이스북'], [/\bLine\//i, '라인'],
-    [/NAVER\(inapp/i, '네이버 앱'], [/everytimeApp/i, '에브리타임'], [/DaumApps/i, '다음 앱'],
+    [/NAVER\(inapp/i, '네이버 앱'], [/everytimeApp/i, '에브리타임'], [/DaumApps/i, '다음 앱'], [/\bGSA\//i, 'Google 앱'],
   ].find(([re]) => re.test(ua));
   const ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   return {
     standalone: window.matchMedia?.('(display-mode: standalone)').matches || /** @type {any} */ (navigator).standalone === true,
     inApp: inAppMatch ? inAppMatch[1] : null,
     platform: ios ? 'ios' : /Android/i.test(ua) ? 'android' : 'other',
+    safari: ios && /Safari\//.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua),
     canPrompt: Boolean(installPrompt),
     prompt: async () => {
       if (!installPrompt) return;
@@ -959,9 +960,14 @@ function render() {
       onShare: ro ? null : openShare,
       onReceive: () => openReceiveInput(),
       viewOnly: ro,
-      welcome: !ro && state.grants.length === 0 && state.trips.length === 0 ? { inApp: installInfo().inApp } : null,
+      welcome: !ro && state.grants.length === 0 && state.trips.length === 0 ? installInfo() : null,
       onHelp: openGuide,
-      onRestore: () => setView('settings'),
+      onRestore: () => {
+        setView('settings');
+        const backupTitle = main.querySelector('#backup-title');
+        backupTitle?.focus({ preventScroll: true });
+        backupTitle?.scrollIntoView({ block: 'start' });
+      },
     });
   } else if (view === 'grants') {
     renderGrants(main, {

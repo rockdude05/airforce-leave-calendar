@@ -266,16 +266,19 @@ export function tripCard(t, grantById, onOpenTrip, today, onOpenPlan = null) {
 
 /** 첫 실행 안내: 기록을 넣기 전에 브라우저·복원 경로부터 알려 준다 */
 function welcome({ welcome: w, onHelp, onRestore }) {
+  const safariTransfer = w.platform === 'ios' && !w.inApp && (w.standalone || w.safari);
   return h('section', { class: 'welcome', 'aria-labelledby': 'welcome-title', 'data-testid': 'welcome' },
     h('h2', { id: 'welcome-title', class: 'section-title' }, '처음이세요?'),
     w.inApp ? h('p', { class: 'notice' }, `${w.inApp} 안에서 열었습니다. 여기 입력한 기록은 Safari·Chrome으로 옮기면 보이지 않습니다. 먼저 메뉴에서 "다른 브라우저로 열기"를 눌러 주세요.`) : null,
+    safariTransfer ? h('p', { class: 'notice' }, '아이폰·아이패드의 Safari와 홈 화면 앱은 기록이 따로 저장되며 자동으로 동기화되지 않습니다. Safari에서 쓴 기록은 백업 파일로 옮겨야 합니다. 아래 버튼에서 방법을 확인하세요.') : null,
     h('ol', { class: 'rules' },
       h('li', null, '아이폰은 Safari, 안드로이드는 Chrome으로 열고 홈 화면에 추가하세요.'),
-      h('li', null, '아래 "내 휴가" 탭에서 지금 남은 휴가를 입력하세요.'),
-      h('li', null, '다른 휴대폰에서 쓰던 기록이 있으면 백업 파일로 복원하세요.')),
+      h('li', null, '같은 아이폰의 Safari나 다른 휴대폰에 기록이 있다면 새로 입력하기 전에 백업 파일로 복원하세요.'),
+      h('li', null, '기존 기록이 없다면 아래 "내 휴가" 탭에서 지금 남은 휴가를 입력하세요.')),
     h('div', { class: 'btn-row' },
       h('button', { type: 'button', class: 'btn btn--ghost btn--small', onClick: onHelp }, '사용법 보기'),
-      h('button', { type: 'button', class: 'btn btn--ghost btn--small', onClick: onRestore }, '백업에서 복원')));
+      h('button', { type: 'button', class: 'btn btn--ghost btn--small', onClick: onRestore },
+        safariTransfer ? (w.standalone ? 'Safari 기록 가져오기' : 'Safari 기록 옮기는 방법') : '백업에서 복원')));
 }
 
 /** 선택한 날의 복무 일정(진급·전역·성과제)과 성과제 일정 만들기 */
